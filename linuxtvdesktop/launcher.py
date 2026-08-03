@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import asyncio
 import base64
 import configparser
@@ -39,76 +40,57 @@ QT_BINDING = None
 
 
 def _load_qt_binding():
-    preferred = os.getenv("LINUXTV_QT_BINDING")
-    if preferred:
-        order = [preferred]
-    elif sys.platform.startswith("linux"):
-        order = ["PyQt5", "PySide6"]
-    else:
-        order = ["PySide6", "PyQt5"]
+    """Load PyQt6 binding."""
+    try:
+        qt_core = importlib.import_module("PyQt6.QtCore")
+        qt_gui = importlib.import_module("PyQt6.QtGui")
+        qt_widgets = importlib.import_module("PyQt6.QtWidgets")
+        signal_type = qt_core.pyqtSignal
 
-    for binding in order:
-        try:
-            if binding == "PyQt5":
-                qt_core = importlib.import_module("PyQt5.QtCore")
-                qt_gui = importlib.import_module("PyQt5.QtGui")
-                qt_widgets = importlib.import_module("PyQt5.QtWidgets")
-                signal_type = qt_core.pyqtSignal
-            elif binding == "PySide6":
-                qt_core = importlib.import_module("PySide6.QtCore")
-                qt_gui = importlib.import_module("PySide6.QtGui")
-                qt_widgets = importlib.import_module("PySide6.QtWidgets")
-                signal_type = qt_core.Signal
-            else:
-                logging.warning("Unknown Qt binding requested: %s", binding)
-                continue
-
-            return (
-                binding,
-                qt_core.QEvent,
-                qt_core.QEasingCurve,
-                qt_core.QObject,
-                qt_core.QPropertyAnimation,
-                qt_core.QRect,
-                qt_core.Qt,
-                qt_core.QSize,
-                qt_core.QTimer,
-                signal_type,
-                qt_gui.QFont,
-                qt_gui.QIcon,
-                qt_gui.QKeyEvent,
-                qt_gui.QPixmap,
-                qt_gui.QWheelEvent,
-                qt_gui.QColor,
-                qt_gui.QPainter,
-                qt_gui.QLinearGradient,
-                qt_widgets.QApplication,
-                qt_widgets.QComboBox,
-                qt_widgets.QDialog,
-                qt_widgets.QFrame,
-                qt_widgets.QGraphicsDropShadowEffect,
-                qt_widgets.QGraphicsOpacityEffect,
-                qt_widgets.QGridLayout,
-                qt_widgets.QHBoxLayout,
-                qt_widgets.QLabel,
-                qt_widgets.QLineEdit,
-                qt_widgets.QMainWindow,
-                qt_widgets.QMenu,
-                qt_widgets.QMessageBox,
-                qt_widgets.QPushButton,
-                qt_widgets.QSizePolicy,
-                qt_widgets.QScrollArea,
-                qt_widgets.QSlider,
-                qt_widgets.QToolButton,
-                qt_widgets.QVBoxLayout,
-                qt_widgets.QWidget,
-                qt_gui.QDrag,
-                qt_core.QMimeData,
-            )
-        except ImportError:
-            continue
-
-    raise ImportError("No supported Qt binding found. Install PyQt5 or PySide6.")
+        return (
+            "PyQt6",
+            qt_core.QEvent,
+            qt_core.QEasingCurve,
+            qt_core.QObject,
+            qt_core.QPropertyAnimation,
+            qt_core.QRect,
+            qt_core.Qt,
+            qt_core.QSize,
+            qt_core.QTimer,
+            signal_type,
+            qt_gui.QFont,
+            qt_gui.QIcon,
+            qt_gui.QKeyEvent,
+            qt_gui.QPixmap,
+            qt_gui.QWheelEvent,
+            qt_gui.QColor,
+            qt_gui.QPainter,
+            qt_gui.QLinearGradient,
+            qt_widgets.QApplication,
+            qt_widgets.QComboBox,
+            qt_widgets.QDialog,
+            qt_widgets.QFrame,
+            qt_widgets.QGraphicsDropShadowEffect,
+            qt_widgets.QGraphicsOpacityEffect,
+            qt_widgets.QGridLayout,
+            qt_widgets.QHBoxLayout,
+            qt_widgets.QLabel,
+            qt_widgets.QLineEdit,
+            qt_widgets.QMainWindow,
+            qt_widgets.QMenu,
+            qt_widgets.QMessageBox,
+            qt_widgets.QPushButton,
+            qt_widgets.QSizePolicy,
+            qt_widgets.QScrollArea,
+            qt_widgets.QSlider,
+            qt_widgets.QToolButton,
+            qt_widgets.QVBoxLayout,
+            qt_widgets.QWidget,
+            qt_gui.QDrag,
+            qt_core.QMimeData,
+        )
+    except ImportError as e:
+        raise ImportError("PyQt6 not found. Install it with: pip install PyQt6") from e
 
 
 (
@@ -168,7 +150,6 @@ DEFAULT_CONFIG = {
     "web_apps": [
         {"name": "YouTube", "url": "https://www.youtube.com", "icon": "icons/youtube.png"},
     ],
-    "categories": {},  # User-defined categories: {"category_name": ["app_name", ...]}
     "auth": {
         "username": "",
         "password_hash": "",  # PBKDF2 hash for storage
@@ -585,19 +566,19 @@ def create_white_icon(icon_path: str, size: int = 96):
     """Create a white version of an icon by painting it with white color"""
     if not icon_path:
         return QIcon()
-    
+
     icon_source = Path(icon_path).expanduser()
     if not icon_source.exists():
         return QIcon()
-    
+
     pixmap = QPixmap(str(icon_source))
     if pixmap.isNull():
         return QIcon()
-    
+
     # Create a new pixmap with the same size
     white_pixmap = QPixmap(pixmap.size())
     white_pixmap.fill(Qt.transparent)
-    
+
     # Paint the original pixmap in white
     painter = QPainter(white_pixmap)
     painter.setCompositionMode(QPainter.CompositionMode_Source)
@@ -605,7 +586,7 @@ def create_white_icon(icon_path: str, size: int = 96):
     painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
     painter.fillRect(white_pixmap.rect(), Qt.white)
     painter.end()
-    
+
     return QIcon(white_pixmap)
 
 
@@ -678,21 +659,21 @@ def desktop_entry_for_command(command_text: str):
 
 def resolve_native_icon(app):
     app_name = app.get("name", "")
-    
+
     # Try to find icon by matching app name to filename
     if app_name:
         icon_name = app_name.lower().replace(" ", "") + ".png"
         icon_path = resource_path("icons/" + icon_name)
         if icon_path.exists():
             return normalized_icon_path(str(icon_path), f"native-name:{icon_name}")
-    
+
     # Try configured icon as fallback
     configured_icon = app.get("icon", "")
     if configured_icon:
         path = resource_path(configured_icon)
         if path.exists():
             return normalized_icon_path(str(path), f"native-config:{configured_icon}")
-    
+
     # Try desktop entry
     entry = desktop_entry_for_command(app.get("cmd", ""))
     if entry:
@@ -704,26 +685,26 @@ def resolve_native_icon(app):
 
 def fetch_web_icon(app):
     app_name = app.get("name", "")
-    
+
     # Try to find icon by matching app name to filename
     if app_name:
         icon_name = app_name.lower().replace(" ", "").replace("+", "plus") + ".png"
         icon_path = resource_path("icons/" + icon_name)
         if icon_path.exists():
             return normalized_icon_path(str(icon_path), f"web-name:{icon_name}")
-    
+
     # Try configured icon as fallback
     configured_icon = app.get("icon", "")
     if configured_icon:
         path = resource_path(configured_icon)
         if path.exists():
             return normalized_icon_path(str(path), f"web-config:{configured_icon}")
-    
+
     # Fallback to network icon
     network_icon = resource_path("icons/network.png")
     if network_icon.exists():
         return normalized_icon_path(str(network_icon), "web-fallback:network")
-    
+
     return ""
 
 
@@ -765,12 +746,10 @@ def normalize_config(config):
 
     native_apps = normalized.get("native_apps")
     web_apps = normalized.get("web_apps")
-    categories = normalized.get("categories")
     auth = normalized.get("auth")
     auto_launch = normalized.get("auto_launch")
     normalized["native_apps"] = native_apps if isinstance(native_apps, list) else list(DEFAULT_CONFIG["native_apps"])
     normalized["web_apps"] = web_apps if isinstance(web_apps, list) else list(DEFAULT_CONFIG["web_apps"])
-    normalized["categories"] = categories if isinstance(categories, dict) else dict(DEFAULT_CONFIG["categories"])
     normalized["auth"] = auth if isinstance(auth, dict) else dict(DEFAULT_CONFIG["auth"])
     normalized["auto_launch"] = auto_launch if isinstance(auto_launch, dict) else dict(DEFAULT_CONFIG["auto_launch"])
     return normalized
@@ -800,15 +779,15 @@ def verify_remote_credentials(config, username: str, password: str) -> bool:
     expected_user = auth.get("username", "").strip()
     expected_hash = auth.get("password_hash", "").strip()
     salt = auth.get("password_salt", "").strip()
-    
+
     if not expected_user or not expected_hash:
         return True
-    
+
     # If salt exists, use PBKDF2 verification
     if salt:
         computed_hash, _ = hash_remote_password(password, salt)
         return username.strip() == expected_user and computed_hash == expected_hash
-    
+
     # Legacy fallback: old SHA-256 without salt (insecure, but allows migration)
     logging.warning("Legacy password hash detected without salt. Please update password for better security.")
     legacy_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
@@ -921,7 +900,7 @@ def maintain_hdmi_audio(stop_event: threading.Event, duration_seconds: int = 20)
 def get_current_volume():
     """Get current system volume percentage"""
     import re
-    
+
     # Try wpctl first
     wpctl = shutil.which("wpctl")
     if wpctl:
@@ -940,7 +919,7 @@ def get_current_volume():
                     return int(volume * 100)
         except Exception:
             pass
-    
+
     # Try pactl
     pactl = shutil.which("pactl")
     if pactl:
@@ -958,7 +937,7 @@ def get_current_volume():
                     return int(match.group(1))
         except Exception:
             pass
-    
+
     # Try amixer
     amixer = shutil.which("amixer")
     if amixer:
@@ -976,7 +955,7 @@ def get_current_volume():
                     return int(match.group(1))
         except Exception:
             pass
-    
+
     logging.warning("Could not get current volume")
     return 50  # Default fallback
 
@@ -1066,7 +1045,7 @@ def control_system_volume(action: str):
 def control_system_brightness(action: str, level: int = None):
     """Control screen brightness. action can be 'BRIGHTNESS_UP', 'BRIGHTNESS_DOWN', or 'SET_BRIGHTNESS'"""
     action = action.upper().strip()
-    
+
     # Try brightnessctl first (modern systems)
     brightnessctl = shutil.which("brightnessctl")
     if brightnessctl:
@@ -1101,14 +1080,14 @@ def control_system_brightness(action: str, level: int = None):
                     return True
         except Exception:
             pass
-    
+
     # Try xrandr as fallback
     xrandr = shutil.which("xrandr")
     if xrandr:
         try:
             # Get current brightness
             current_brightness = get_current_brightness()
-            
+
             if action == "BRIGHTNESS_UP":
                 new_brightness = min(1.0, current_brightness + 0.05)
             elif action == "BRIGHTNESS_DOWN":
@@ -1118,7 +1097,7 @@ def control_system_brightness(action: str, level: int = None):
                 new_brightness = level / 100.0
             else:
                 return False
-            
+
             # Get the connected display
             result = subprocess.run(
                 [xrandr, "--query"],
@@ -1126,14 +1105,14 @@ def control_system_brightness(action: str, level: int = None):
                 capture_output=True,
                 text=True,
             )
-            
+
             if result.returncode == 0:
                 display = None
                 for line in result.stdout.splitlines():
                     if " connected" in line:
                         display = line.split()[0]
                         break
-                
+
                 if display:
                     result = subprocess.run(
                         [xrandr, "--output", display, "--brightness", str(new_brightness)],
@@ -1145,7 +1124,7 @@ def control_system_brightness(action: str, level: int = None):
                         return True
         except Exception:
             pass
-    
+
     return False
 
 
@@ -1175,7 +1154,7 @@ def get_current_brightness() -> float:
                         return current / max_val
         except Exception:
             pass
-    
+
     # Default to 1.0 (100%) if cannot determine
     return 1.0
 
@@ -1321,7 +1300,7 @@ def request_system_update():
     if not apt:
         logging.warning("apt is not available on this system")
         return False, "apt is not available on this system"
-    
+
     try:
         # Use a terminal emulator if available
         terminal_emulators = ["gnome-terminal", "x-terminal-emulator", "xterm", "konsole"]
@@ -1330,17 +1309,17 @@ def request_system_update():
             if shutil.which(term):
                 terminal = term
                 break
-        
+
         # Check current username - only auto-password for linuxtv user
         current_user = os.environ.get("USER") or os.environ.get("LOGNAME") or ""
-        
+
         if current_user == "linuxtv":
             # Auto-fill password for linuxtv user
             update_command = "echo 'linuxtv' | sudo -S apt update && echo 'linuxtv' | sudo -S apt upgrade -y"
         else:
             # Let user enter password manually
             update_command = "sudo apt update && sudo apt upgrade -y"
-        
+
         if terminal:
             # Run in terminal so user can see progress
             if terminal == "gnome-terminal":
@@ -1361,14 +1340,14 @@ def request_system_update():
 
 class InputDeviceGrabber(threading.Thread):
     """Captures input events from remote control devices system-wide using evdev."""
-    
+
     def __init__(self, launcher_window):
         super().__init__(daemon=True)
         self.launcher_window = launcher_window
         self.running = False
         self.devices = []
         self._stop_event = threading.Event()
-        
+
     def start_grabbing(self):
         """Start capturing input events from remote control devices."""
         try:
@@ -1376,21 +1355,21 @@ class InputDeviceGrabber(threading.Thread):
         except ImportError:
             logging.warning("evdev not installed; global input grabbing disabled")
             return False
-            
+
         self.running = True
         self.devices = []
-        
+
         # Find all input devices
         for path in evdev.list_devices():
             try:
                 device = evdev.InputDevice(path)
                 caps = device.capabilities()
-                
+
                 # Look for devices that are likely remote controls
                 # Remote controls typically have navigation keys but not full keyboard
                 if evdev.ecodes.EV_KEY in caps:
                     key_codes = caps[evdev.ecodes.EV_KEY]
-                    
+
                     # Check if this looks like a remote control
                     # Remote controls usually have directional keys, OK/Enter, back, etc.
                     has_directional = any(code in key_codes for code in [
@@ -1398,13 +1377,13 @@ class InputDeviceGrabber(threading.Thread):
                         evdev.ecodes.KEY_LEFT, evdev.ecodes.KEY_RIGHT
                     ])
                     has_enter = evdev.ecodes.KEY_ENTER in key_codes or evdev.ecodes.KEY_KPENTER in key_codes
-                    
+
                     # Check if it's NOT a full keyboard (doesn't have letter keys)
                     has_letters = any(code in key_codes for code in [
                         evdev.ecodes.KEY_A, evdev.ecodes.KEY_B, evdev.ecodes.KEY_C,
                         evdev.ecodes.KEY_Q, evdev.ecodes.KEY_W, evdev.ecodes.KEY_E
                     ])
-                    
+
                     # Grab if it looks like a remote (has directional + enter, but not full keyboard)
                     if has_directional and (has_enter or len(key_codes) < 50) and not has_letters:
                         try:
@@ -1416,17 +1395,17 @@ class InputDeviceGrabber(threading.Thread):
                     elif has_directional and has_letters:
                         # It's a keyboard - don't grab it exclusively
                         logging.debug("Skipping keyboard device: %s (%s)", device.name, path)
-                        
+
             except Exception as e:
                 logging.warning("Failed to check device %s: %s", path, e)
-                
+
         if not self.devices:
             logging.info("No remote control devices found to grab (this is OK if using keyboard)")
             return False
-            
+
         self.start()
         return True
-        
+
     def stop_grabbing(self):
         """Stop capturing input events."""
         self._stop_event.set()
@@ -1437,7 +1416,7 @@ class InputDeviceGrabber(threading.Thread):
             except Exception:
                 pass
         self.devices.clear()
-        
+
     def run(self):
         """Main loop to read and process input events."""
         try:
@@ -1445,7 +1424,7 @@ class InputDeviceGrabber(threading.Thread):
             from select import select
         except ImportError:
             return
-            
+
         while self.running and not self._stop_event.is_set():
             try:
                 # Wait for events from any device
@@ -1461,7 +1440,7 @@ class InputDeviceGrabber(threading.Thread):
                         logging.debug("Error reading from device: %s", e)
             except Exception as e:
                 logging.debug("Error in input grabber loop: %s", e)
-                
+
     def _handle_key_event(self, event):
         """Handle a key event and forward to launcher."""
         try:
@@ -1469,17 +1448,17 @@ class InputDeviceGrabber(threading.Thread):
             from evdev import ecodes
         except ImportError:
             return
-            
+
         # Only process key press events (not release)
         if event.value != 1:  # 1 = press, 0 = release, 2 = repeat
             return
-            
+
         key_code = event.code
         key_name = ecodes.KEY[key_code] if key_code in ecodes.KEY else None
-        
+
         if not key_name:
             return
-            
+
         # Map common remote control keys to actions
         action_map = {
             'KEY_UP': 'UP',
@@ -1499,7 +1478,7 @@ class InputDeviceGrabber(threading.Thread):
             'KEY_PAUSE': 'PLAY_PAUSE',
             'KEY_TAB': 'TAB',
         }
-        
+
         action = action_map.get(key_name)
         if action:
             logging.debug("Remote key pressed: %s -> %s", key_name, action)
@@ -1517,7 +1496,7 @@ class WebSocketControlServer(threading.Thread):
         config_port = ws_config.get("port", 8765)
         self.host = host if host is not None else config_host
         self.port = port if port is not None else config_port
-        
+
         self.loop = None
         self.server = None
         self._stop_event = threading.Event()
@@ -1526,7 +1505,7 @@ class WebSocketControlServer(threading.Thread):
     async def handler(self, websocket, path=None):
         logging.info("WebSocket connection from %s", websocket.remote_address)
         authenticated = not remote_auth_enabled(self.window.config)
-        
+
         # If no authentication required, send apps list immediately
         if authenticated:
             apps_list = self.window.get_installed_apps()
@@ -1535,7 +1514,7 @@ class WebSocketControlServer(threading.Thread):
                 "type": "apps_list",
                 "apps": apps_list
             }))
-        
+
         try:
             async for message in websocket:
                 logging.info("Received remote action: %s", message)
@@ -1580,29 +1559,29 @@ class WebSocketControlServer(threading.Thread):
                     if not nonce:
                         await websocket.send(json.dumps({"status": "auth_error", "error": "no challenge issued"}))
                         continue
-                    
+
                     username = str(payload.get("username", ""))
                     response_hash = str(payload.get("response", ""))
-                    
+
                     auth = self.window.config.get("auth", {})
                     stored_password_hash = auth.get("password_hash", "")
                     salt = auth.get("password_salt", "")
                     simple_hash = auth.get("password_simple_hash", "")
                     stored_username = auth.get("username", "")
-                    
+
                     logging.info("Auth attempt: user=%s, has_simple_hash=%s", username, bool(simple_hash))
-                    
+
                     # Client computes: SHA-256(SHA-256(raw_password):nonce)
                     # Server verifies using stored simple_hash (SHA-256 of raw password)
                     if simple_hash:
                         expected = hashlib.sha256(f"{simple_hash}:{nonce}".encode()).hexdigest()
-                        logging.info("Challenge verification: nonce=%s, expected=%s, got=%s", 
+                        logging.info("Challenge verification: nonce=%s, expected=%s, got=%s",
                                    nonce[:8] + "...", expected[:16] + "...", response_hash[:16] + "...")
                     else:
                         # No simple hash stored (old config), challenge-response won't work
                         logging.warning("No password_simple_hash in config, challenge-response disabled")
                         expected = None
-                    
+
                     if username == stored_username and expected and response_hash == expected:
                         authenticated = True
                         await websocket.send(json.dumps({"status": "auth_ok"}))
@@ -1615,7 +1594,7 @@ class WebSocketControlServer(threading.Thread):
                         }))
                     else:
                         await websocket.send(json.dumps({"status": "auth_error", "error": "invalid credentials"}))
-                    
+
                     # Clean up nonce
                     if websocket in self._auth_nonces:
                         del self._auth_nonces[websocket]
@@ -1698,51 +1677,105 @@ class WebSocketControlServer(threading.Thread):
                     }))
                     continue
 
+                # Handle Kodi Image request - fetch images with proper auth
+                if message_type == "get_kodi_image":
+                    image_path = str(payload.get("path", ""))
+                    if not image_path:
+                        await websocket.send(json.dumps({
+                            "status": "error",
+                            "type": "kodi_image",
+                            "message": "No image path provided"
+                        }))
+                        continue
+
+                    try:
+                        # Get Kodi config
+                        kodi_config = self.window.config.get('kodi', {})
+                        kodi_host = kodi_config.get('host', 'localhost')
+                        kodi_port = kodi_config.get('port', '8080')
+                        kodi_user = kodi_config.get('username', '')
+                        kodi_pass = kodi_config.get('password', '')
+
+                        # Construct Kodi image URL
+                        kodi_image_url = f"http://{kodi_host}:{kodi_port}/image/{image_path}"
+
+                        logging.info("Fetching Kodi image: %s", kodi_image_url)
+
+                        # Create request with authentication
+                        req = Request(kodi_image_url)
+                        if kodi_user or kodi_pass:
+                            auth_string = f"{kodi_user}:{kodi_pass}"
+                            auth_bytes = base64.b64encode(auth_string.encode('utf-8')).decode('utf-8')
+                            req.add_header('Authorization', f'Basic {auth_bytes}')
+
+                        # Fetch image from Kodi
+                        with urlopen(req, timeout=10) as response:
+                            image_data = response.read()
+                            content_type = response.headers.get('Content-Type', 'image/png')
+
+                            # Convert to base64 to send via WebSocket
+                            image_b64 = base64.b64encode(image_data).decode('utf-8')
+
+                            await websocket.send(json.dumps({
+                                "status": "ok",
+                                "type": "kodi_image",
+                                "image": f"data:{content_type};base64,{image_b64}",
+                                "path": image_path
+                            }))
+                            logging.info("Successfully fetched Kodi image")
+                    except Exception as e:
+                        logging.error("Failed to fetch Kodi image: %s", e)
+                        await websocket.send(json.dumps({
+                            "status": "error",
+                            "type": "kodi_image",
+                            "message": f"Failed to fetch image: {str(e)}",
+                            "path": image_path
+                        }))
+                    continue
+
                 # Handle add app request
                 if message_type == "add_app":
                     app_kind = str(payload.get("kind", ""))
                     app_name = str(payload.get("name", "")).strip()
-                    
+
                     if not app_name:
                         await websocket.send(json.dumps({"status": "error", "error": "app name required"}))
                         continue
-                    
+
                     if app_kind == "native":
                         app_command = str(payload.get("command", "")).strip()
                         if not app_command:
                             await websocket.send(json.dumps({"status": "error", "error": "command required for native app"}))
                             continue
-                        
-                        # Schedule GUI work on main thread
-                        QTimer.singleShot(0, lambda name=app_name, cmd=app_command: self.window.add_native_app(name, cmd, notify=False))
+
+                        self.window.add_native_app(app_name, app_command)
                         logging.info("Added native app: %s (%s)", app_name, app_command)
-                        
+
                     elif app_kind == "web":
                         app_url = str(payload.get("url", "")).strip()
                         if not app_url:
                             await websocket.send(json.dumps({"status": "error", "error": "url required for web app"}))
                             continue
-                        
-                        # Schedule GUI work on main thread
-                        QTimer.singleShot(0, lambda name=app_name, url=app_url: self.window.add_web_app(name, url, notify=False))
+
+                        self.window.add_web_app(app_name, app_url)
                         logging.info("Added web app: %s (%s)", app_name, app_url)
-                    
+
                     await websocket.send(json.dumps({"status": "ok", "type": "app_added"}))
                     continue
 
                 # Handle remove app request
                 if message_type == "remove_app":
                     app_id = str(payload.get("id", "")).strip()
-                    
+
                     if not app_id:
                         await websocket.send(json.dumps({"status": "error", "error": "app id required"}))
                         continue
-                    
+
                     self.window.remove_app_by_id(app_id)
                     logging.info("Removed app: %s", app_id)
-                    
+
                     await websocket.send(json.dumps({
-                        "status": "ok", 
+                        "status": "ok",
                         "type": "app_removed",
                         "message": f"App removed successfully"
                     }))
@@ -1967,6 +2000,28 @@ class WebSocketControlServer(threading.Thread):
                         }))
                     continue
 
+                # Handle Add App request
+                if message_type == "add_app":
+                    app_id = str(payload.get("id", ""))
+                    app_name = str(payload.get("name", ""))
+                    app_kind = str(payload.get("kind", "native"))
+                    try:
+                        success, message = self.window.add_app_from_remote(app_id, app_name, app_kind)
+                        await websocket.send(json.dumps({
+                            "status": "ok" if success else "error",
+                            "type": "app_added",
+                            "success": success,
+                            "message": message
+                        }))
+                    except Exception as exc:
+                        logging.exception("Failed to add app from remote")
+                        await websocket.send(json.dumps({
+                            "status": "error",
+                            "type": "app_added",
+                            "message": f"Failed to add app: {exc}"
+                        }))
+                    continue
+
                 action = action.upper()
                 if action:
                     self.window.queue_remote_action(action)
@@ -1980,13 +2035,13 @@ class WebSocketControlServer(threading.Thread):
         if websockets is None:
             logging.error("websockets library not installed; remote control disabled")
             return
-        
+
         self.server = await websockets.serve(
-            self.handler, 
-            self.host, 
+            self.handler,
+            self.host,
             self.port
         )
-        
+
         logging.info("WebSocket remote server started on ws://%s:%s", self.host, self.port)
         try:
             await self.server.wait_closed()
@@ -2055,28 +2110,28 @@ class TileButton(QPushButton):
         self._focus_rect = QRect(0, 0, self.shell_size.width(), self.shell_size.height())
         self._anim = QPropertyAnimation(self, b"geometry", self)
         self._anim.setDuration(300)
-        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.card_shell = None
         self.row_scroll = None
         self.section_widget = None
         self.entry_kind = ""
         self.entry_item = None
-        self.setFocusPolicy(Qt.StrongFocus)
-        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         # Allow parent to handle mouse events for drag and drop
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self.setMinimumSize(self.base_size)
         self.setMaximumSize(self.shell_size)
-        self.setFont(QFont("Sans Serif", tile_font, QFont.Bold))
+        self.setFont(QFont("Sans Serif", tile_font, QFont.Weight.Bold))
         self.setIconSize(QSize(tile_icon, tile_icon))
         self.set_tile_icon(icon_path)
         self.setToolTip(tooltip)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setProperty("tileVariant", variant)
         self.setProperty("hasSubtitle", "true" if subtitle else "false")
         self.setStyleSheet("")
         self.setGeometry(self._rest_rect)
-        
+
         # Ripple effect attributes
         self._ripple_radius = 0
         self.ripple_pos = None
@@ -2085,11 +2140,11 @@ class TileButton(QPushButton):
 
     def _get_ripple_radius(self):
         return self._ripple_radius
-        
+
     def _set_ripple_radius(self, value):
         self._ripple_radius = value
         self.update()  # Trigger repaint
-        
+
     ripple_radius = property(_get_ripple_radius, _set_ripple_radius)
 
     def mousePressEvent(self, event):
@@ -2120,20 +2175,20 @@ class TileButton(QPushButton):
         self.ripple_timer.start(interval_ms)
 
         super().mousePressEvent(event)
-        
+
     def paintEvent(self, event):
         """Paint button with ripple effect"""
         super().paintEvent(event)
-        
+
         # Draw ripple if animating
         if self.ripple_pos and self.ripple_opacity > 0:
             painter = QPainter(self)
             painter.setRenderHint(QPainter.Antialiasing)
-            
+
             ripple_color = QColor(255, 255, 255, int(self.ripple_opacity * 255))
             painter.setBrush(ripple_color)
             painter.setPen(Qt.NoPen)
-            
+
             ripple_rect = QRect(
                 int(self.ripple_pos.x() - self.ripple_radius),
                 int(self.ripple_pos.y() - self.ripple_radius),
@@ -2142,7 +2197,7 @@ class TileButton(QPushButton):
             )
             painter.drawEllipse(ripple_rect)
             painter.end()
-            
+
             # Fade out ripple
             self.ripple_opacity *= 0.95
             if self.ripple_opacity < 0.01:
@@ -2192,16 +2247,16 @@ class DropRowWidget(QWidget):
 
 class AppCard(QWidget):
     _drag_source = None  # Class variable to track current drag source
-    
+
     def __init__(self, tile_button: TileButton, edit_callback=None, delete_callback=None, favorite_callback=None, reorder_callback=None, show_actions: bool = True, metrics=None, app_data=None, kind=None):
         super().__init__()
         metrics = metrics or {}
         action_button_size = int(metrics.get("action_button_size", 44))
         shadow_radius = int(metrics.get("card_shadow_radius", 10))
         self.setObjectName("appCardShell")
-        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setFixedSize(tile_button.shell_size)
-        
+
         # Store app data for drag-and-drop
         self.app_data = app_data
         self.kind = kind
@@ -2227,17 +2282,17 @@ class AppCard(QWidget):
             self.favorite_button.setText("☆")  # Empty star by default
             self.favorite_button.setToolTip("Add to favorites")
             self.favorite_button.clicked.connect(favorite_callback)
-            self.favorite_button.setCursor(Qt.PointingHandCursor)
-            self.favorite_button.setFocusPolicy(Qt.NoFocus)
+            self.favorite_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.favorite_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             self.favorite_button.setFixedSize(action_button_size, action_button_size)
-            
+
             self.edit_button = QToolButton(self)
             self.edit_button.setObjectName("editButton")
             self.edit_button.setText("⚙")
             self.edit_button.setToolTip("Edit this app")
             self.edit_button.clicked.connect(edit_callback)
-            self.edit_button.setCursor(Qt.PointingHandCursor)
-            self.edit_button.setFocusPolicy(Qt.NoFocus)
+            self.edit_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.edit_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             self.edit_button.setFixedSize(action_button_size, action_button_size)
 
             self.delete_button = QToolButton(self)
@@ -2245,8 +2300,8 @@ class AppCard(QWidget):
             self.delete_button.setText("✕")
             self.delete_button.setToolTip("Delete this app")
             self.delete_button.clicked.connect(delete_callback)
-            self.delete_button.setCursor(Qt.PointingHandCursor)
-            self.delete_button.setFocusPolicy(Qt.NoFocus)
+            self.delete_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.delete_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             self.delete_button.setFixedSize(action_button_size, action_button_size)
 
         # Enable drag and drop
@@ -2261,19 +2316,19 @@ class AppCard(QWidget):
     def eventFilter(self, watched, event):
         """Intercept mouse events from tile_button for drag handling"""
         if watched == self.tile_button:
-            if event.type() == QEvent.MouseButtonPress:
+            if event.type() == QEvent.Type.MouseButtonPress:
                 # Map coordinates from tile_button to app_card
                 mapped_event = self._map_mouse_event(event)
                 self.mousePressEvent(mapped_event)
                 # Don't return True - let the button also handle it
-            elif event.type() == QEvent.MouseMove:
+            elif event.type() == QEvent.Type.MouseMove:
                 # Map coordinates from tile_button to app_card
                 mapped_event = self._map_mouse_event(event)
                 self.mouseMoveEvent(mapped_event)
                 # If we're dragging, don't pass to button
                 if self._is_dragging:
                     return True
-            elif event.type() == QEvent.MouseButtonRelease:
+            elif event.type() == QEvent.Type.MouseButtonRelease:
                 # Map coordinates from tile_button to app_card
                 mapped_event = self._map_mouse_event(event)
                 self.mouseReleaseEvent(mapped_event)
@@ -2281,26 +2336,24 @@ class AppCard(QWidget):
                     return True
         return super().eventFilter(watched, event)
 
-    def _map_mouse_event(self, event):
-        """Map mouse event coordinates from tile_button to app_card"""
-        # Get the tile_button's position relative to the app_card
-        button_pos = self.tile_button.pos()
-        # Create a new event with mapped coordinates
-        mapped_pos = event.pos() + button_pos
-        if QT_BINDING == "PyQt5":
-            from PyQt5.QtCore import QPoint
-            from PyQt5.QtGui import QMouseEvent
-        else:
-            from PySide6.QtCore import QPoint
-            from PySide6.QtGui import QMouseEvent
-        return QMouseEvent(
-            event.type(),
-            QPoint(mapped_pos.x(), mapped_pos.y()),
-            event.globalPos(),
-            event.button(),
-            event.buttons(),
-            event.modifiers()
-        )
+def _map_mouse_event(self, event):
+    """Map mouse event coordinates from tile_button to app_card"""
+    from PyQt6.QtCore import QPoint
+    from PyQt6.QtGui import QMouseEvent
+
+    # Get the tile_button's position relative to the app_card
+    button_pos = self.tile_button.pos()
+    # Create a new event with mapped coordinates
+    mapped_pos = event.pos() + button_pos
+
+    return QMouseEvent(
+        event.type(),
+        QPoint(mapped_pos.x(), mapped_pos.y()),
+        event.globalPos(),
+        event.button(),
+        event.buttons(),
+        event.modifiers()
+    )
 
     def sizeHint(self):
         return self.tile_button.shell_size
@@ -2315,10 +2368,10 @@ class AppCard(QWidget):
             button_y = 12
             button_spacing = 6
             button_width = self.delete_button.width()
-            
+
             # Calculate total width needed for 3 buttons
             total_buttons_width = 3 * button_width + 2 * button_spacing
-            
+
             # Position from right to left: delete, edit, favorite
             self.delete_button.move(self.width() - button_width - 12, button_y)
             self.edit_button.move(self.width() - button_width - button_width - 12 - button_spacing, button_y)
@@ -2356,10 +2409,10 @@ class AppCard(QWidget):
                 return
 
         # Allow drag even if clicking on tile_button (that's the main interaction area)
-        
+
         self._is_dragging = True
         AppCard._drag_source = self  # Store as class variable
-        
+
         # Create drag data with app info
         drag = QDrag(self)
         mime_data = QMimeData()
@@ -2372,20 +2425,20 @@ class AppCard(QWidget):
         }
         mime_data.setText(json.dumps(app_info))
         drag.setMimeData(mime_data)
-        
+
         # Create drag pixmap (semi-transparent snapshot)
         pixmap = self.grab()
         drag.setPixmap(pixmap)
         drag.setHotSpot(event.pos())
-        
+
         # Execute drag and get result
         result = drag.exec_(Qt.MoveAction)
-        
+
         # Reset drag state
         self._is_dragging = False
         self._drag_start_pos = None
         AppCard._drag_source = None
-    
+
     def get_app_id(self):
         """Get unique identifier for the app in this card"""
         if self.app_data:
@@ -2472,7 +2525,7 @@ class AppCard(QWidget):
                     grandparent = parent.parent()
                     if grandparent and hasattr(grandparent, 'ui_metrics'):
                         metrics = grandparent.ui_metrics
-                
+
                 shadow_radius = metrics.get("card_shadow_radius", 10)
                 self.shadow_effect.setBlurRadius(shadow_radius)
                 self.shadow_effect.setYOffset(4)
@@ -2489,27 +2542,27 @@ class ParallaxBackground(QWidget):
         super().__init__(parent)
         self.scroll_position = 0
         self.setObjectName("parallaxBackground")
-        
+
     def set_scroll_position(self, position):
         """Update scroll position for gradient animation"""
         self.scroll_position = position
         self.update()
-        
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        
+
         # Create animated gradient based on scroll position
         gradient = QLinearGradient(0, 0, 0, self.height())
-        
+
         # Subtle color shifts based on scroll using dark gray slate theme
         offset = (self.scroll_position % 1000) / 1000.0
-        
+
         gradient.setColorAt(0.0, QColor(15, 23, 42))
         gradient.setColorAt(0.3 + offset * 0.1, QColor(30, 41, 59))
         gradient.setColorAt(0.7 + offset * 0.1, QColor(51, 65, 85))
         gradient.setColorAt(1.0, QColor(15, 23, 42))
-        
+
         painter.fillRect(self.rect(), gradient)
         painter.end()
 
@@ -2532,7 +2585,7 @@ class AddItemDialog(QDialog):
 
         title = QLabel("Add Launcher")
         title.setObjectName("dialogSection")
-        title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Bold))
+        title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold))
         layout.addWidget(title)
 
         subtitle = QLabel("Create a launcher for an installed app command or a website.")
@@ -2629,7 +2682,7 @@ class ConfirmDialog(QDialog):
 
         title = QLabel("Confirm")
         title.setObjectName("dialogSection")
-        title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Bold))
+        title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold))
         layout.addWidget(title)
 
         body = QLabel(body_text)
@@ -2690,7 +2743,7 @@ class NetworkDialog(QDialog):
 
         wifi_title = QLabel("Wi-Fi")
         wifi_title.setObjectName("dialogSection")
-        wifi_title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Bold))
+        wifi_title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold))
         layout.addWidget(wifi_title)
 
         wifi_subtitle = QLabel("Scan for nearby networks, enter a password if needed, and connect without leaving LinuxTV.")
@@ -2872,12 +2925,12 @@ class NetworkDialog(QDialog):
         selected_network = self.wifi_combo.currentData()
         if not isinstance(selected_network, dict):
             selected_network = {"ssid": self.wifi_combo.currentText().strip(), "security": ""}
-        
+
         ssid = selected_network.get("ssid", "").strip()
         if not ssid:
             self.wifi_status_label.setText("Select a network to forget.")
             return
-        
+
         success, message = self.wifi_remove_callback(selected_network)
         if success:
             self.refresh_wifi_networks()
@@ -2917,7 +2970,7 @@ class BluetoothDialog(QDialog):
 
         bluetooth_title = QLabel("Bluetooth")
         bluetooth_title.setObjectName("dialogSection")
-        bluetooth_title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Bold))
+        bluetooth_title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold))
         layout.addWidget(bluetooth_title)
 
         bluetooth_subtitle = QLabel("Scan for nearby Bluetooth devices and connect without leaving LinuxTV.")
@@ -3090,12 +3143,12 @@ class BluetoothDialog(QDialog):
         selected_device = self.bluetooth_combo.currentData()
         if not isinstance(selected_device, dict):
             selected_device = {"mac": self.bluetooth_combo.currentText().strip()}
-        
+
         mac = selected_device.get("mac", "").strip()
         if not mac:
             self.bluetooth_status_label.setText("Select a device to remove.")
             return
-        
+
         # Call the remove callback
         if hasattr(self, 'bluetooth_remove_callback') and self.bluetooth_remove_callback:
             success, message = self.bluetooth_remove_callback(selected_device)
@@ -3120,7 +3173,7 @@ class SoundDialog(QDialog):
 
         title = QLabel("Audio Output")
         title.setObjectName("dialogSection")
-        title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Bold))
+        title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold))
         layout.addWidget(title)
 
         subtitle = QLabel("Select the speaker or audio output device for playing sound.")
@@ -3196,10 +3249,10 @@ class SoundDialog(QDialog):
                 check=False,
                 timeout=10
             )
-            
+
             self.speaker_combo.blockSignals(True)
             self.speaker_combo.clear()
-            
+
             if result.returncode == 0 and result.stdout.strip():
                 default_sink = self.get_default_sink()
                 sink_index = 0
@@ -3213,16 +3266,16 @@ class SoundDialog(QDialog):
                         if sink_name == default_sink:
                             self.speaker_combo.setCurrentIndex(sink_index)
                         sink_index += 1
-                
+
                 if sink_index > 0:
                     self.speaker_status_label.setText(f"Found {sink_index} audio output device(s).")
                 else:
                     self.speaker_status_label.setText("No audio output devices found.")
             else:
                 self.speaker_status_label.setText("No audio output devices found.")
-            
+
             self.speaker_combo.blockSignals(False)
-            
+
         except Exception as e:
             logging.error(f"Error loading speakers: {e}")
             self.speaker_status_label.setText(f"Error loading audio devices: {e}")
@@ -3232,7 +3285,7 @@ class SoundDialog(QDialog):
         pactl = shutil.which("pactl")
         if not pactl:
             return ""
-        
+
         try:
             result = subprocess.run(
                 [pactl, "get-default-sink"],
@@ -3274,7 +3327,7 @@ class SoundDialog(QDialog):
                             break
             except Exception:
                 pass
-        
+
         # Fallback: use the sink name with better formatting
         return sink_name.replace('_', ' ').replace('.', ' ')
 
@@ -3298,7 +3351,7 @@ class SoundDialog(QDialog):
         try:
             import logging
             logging.info(f"Setting default audio sink to: {selected_sink}")
-            
+
             result = subprocess.run(
                 [pactl, "set-default-sink", selected_sink],
                 capture_output=True,
@@ -3306,11 +3359,11 @@ class SoundDialog(QDialog):
                 check=False,
                 timeout=10
             )
-            
+
             if result.returncode == 0:
                 # Move existing audio streams to new sink
                 streams_moved = self.move_sink_inputs(selected_sink)
-                
+
                 friendly_name = self.speaker_combo.currentText()
                 if streams_moved > 0:
                     self.speaker_status_label.setText(
@@ -3344,7 +3397,7 @@ class SoundDialog(QDialog):
                 check=False,
                 timeout=10
             )
-            
+
             if result.returncode == 0 and result.stdout.strip():
                 for line in result.stdout.splitlines():
                     parts = line.split()
@@ -3363,7 +3416,7 @@ class SoundDialog(QDialog):
                             logging.info(f"Moved audio stream {input_id} to {sink_name}")
         except Exception:
             logging.exception("Failed to move sink inputs")
-        
+
         return moved_count
 
 
@@ -3381,7 +3434,7 @@ class BrightnessDialog(QDialog):
 
         title = QLabel("Screen Brightness")
         title.setObjectName("dialogSection")
-        title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Bold))
+        title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold))
         layout.addWidget(title)
 
         subtitle = QLabel("Adjust the brightness level of your display.")
@@ -3412,9 +3465,9 @@ class BrightnessDialog(QDialog):
 
         self.brightness_value_label = QLabel(f"{self.brightness_slider.value()}%")
         self.brightness_value_label.setObjectName("dialogStatus")
-        self.brightness_value_label.setFont(QFont("Sans Serif", metrics["subtitle_font"], QFont.Bold))
+        self.brightness_value_label.setFont(QFont("Sans Serif", metrics["subtitle_font"], QFont.Weight.Bold))
         self.brightness_value_label.setFixedWidth(50)
-        self.brightness_value_label.setAlignment(Qt.AlignRight)
+        self.brightness_value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         slider_row.addWidget(self.brightness_value_label)
         layout.addLayout(slider_row)
 
@@ -3426,7 +3479,7 @@ class BrightnessDialog(QDialog):
             preset_button.setFixedHeight(36)
             preset_button.clicked.connect(lambda checked, val=preset_value: self.set_brightness_preset(val))
             preset_row.addWidget(preset_button)
-        
+
         layout.addLayout(preset_row)
 
         self.brightness_status_label = QLabel("")
@@ -3479,7 +3532,7 @@ class RemoteLoginDialog(QDialog):
 
         title = QLabel("Remote Login")
         title.setObjectName("dialogSection")
-        title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Bold))
+        title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold))
         layout.addWidget(title)
 
         subtitle = QLabel("Set the phone credentials required to control LinuxTV remotely.")
@@ -3562,7 +3615,7 @@ class SettingsDialog(QDialog):
 
         title = QLabel("Auto Open")
         title.setObjectName("dialogSection")
-        title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Bold))
+        title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold))
         layout.addWidget(title)
 
         subtitle = QLabel("Choose which app or site opens automatically after LinuxTV sits idle.")
@@ -3646,12 +3699,12 @@ class LauncherWindow(QMainWindow):
     def __init__(self, config_path: Path):
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.setWindowFlag(Qt.FramelessWindowHint)
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
         self.browser_exe = find_browser()
         self.config_path = config_path
 
         self.config = load_config(config_path)
-        
+
         self.tiles = []
         self.tile_rows = []
         self.current_index = 0
@@ -3673,14 +3726,6 @@ class LauncherWindow(QMainWindow):
         self._icon_bridge.icon_ready.connect(self._apply_resolved_icon)
         self._scroll_anim = None
         self._row_scroll_anim = None
-        
-        # Search and filtering state
-        self.search_filter = ""
-        self.is_search_active = False
-        
-        # Loading overlay for visual feedback
-        self.loading_overlay = None
-        self.loading_label = None
 
         self.process_monitor = QTimer(self)
         self.process_monitor.setInterval(500)
@@ -3709,7 +3754,7 @@ class LauncherWindow(QMainWindow):
         ws_config = self.config.get("websocket", {})
         ssl_cert = ws_config.get("ssl_cert", "")
         ssl_key = ws_config.get("ssl_key", "")
-        
+
         if not ssl_cert or not ssl_key:
             logging.warning(
                 "No HTTPS for WebSocket — the WebSocket server runs on plain ws:// (port %d), not wss://; "
@@ -3717,7 +3762,7 @@ class LauncherWindow(QMainWindow):
                 "Set websocket.ssl_cert and websocket.ssl_key in config to enable WSS.",
                 ws_config.get("port", 8765)
             )
-        
+
         self.ws_server = WebSocketControlServer(self)
         self.ws_server.start()
 
@@ -3874,7 +3919,7 @@ class LauncherWindow(QMainWindow):
             nmcli = shutil.which("nmcli")
             if not nmcli:
                 return ""
-            
+
             # Get active WiFi connections
             result = subprocess.run(
                 [nmcli, "-t", "-f", "active,ssid", "dev", "wifi"],
@@ -3883,18 +3928,18 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=5
             )
-            
+
             if result.returncode == 0 and result.stdout:
                 for line in result.stdout.splitlines():
                     if line.startswith("yes:"):
                         ssid = line.split(":", 1)[1]
                         return ssid
-            
+
             return ""
         except Exception as e:
             logging.error(f"Error getting WiFi SSID: {e}")
             return ""
-    
+
     def is_wifi_connection(self):
         """Check if current connection is via WiFi"""
         import subprocess
@@ -3902,7 +3947,7 @@ class LauncherWindow(QMainWindow):
             nmcli = shutil.which("nmcli")
             if not nmcli:
                 return False
-            
+
             # Check if we have an active WiFi connection
             result = subprocess.run(
                 [nmcli, "-t", "-f", "active,ssid", "dev", "wifi"],
@@ -3911,14 +3956,14 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=5
             )
-            
+
             is_wifi = False
             if result.returncode == 0 and result.stdout:
                 for line in result.stdout.splitlines():
                     if line.startswith("yes:"):
                         is_wifi = True
                         break
-            
+
             return is_wifi
         except Exception as e:
             logging.error(f"Error checking WiFi connection: {e}")
@@ -3995,47 +4040,26 @@ class LauncherWindow(QMainWindow):
         # Left-aligned title
         title = QLabel("LinuxTV")
         title.setObjectName("heroTitle")
-        title.setFont(QFont("Sans Serif", self.ui_metrics["hero_title_font"], QFont.Bold))
-        title.setAlignment(Qt.AlignLeft)
+        title.setFont(QFont("Sans Serif", self.ui_metrics["hero_title_font"], QFont.Weight.Bold))
+        title.setAlignment(Qt.AlignmentFlag.AlignLeft)
         hero_top_row.addWidget(title)
 
         hero_top_row.addStretch(1)
-        
-        # Search input field
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("🔍 Search apps...")
-        self.search_input.setObjectName("searchInput")
-        self.search_input.setFont(QFont("Sans Serif", max(13, self.ui_metrics["settings_button_font"] - 5)))
-        self.search_input.setFixedWidth(250)
-        self.search_input.setStyleSheet("""
-            QLineEdit {
-                background-color: #1e293b;
-                color: #f1f5f9;
-                border: 1px solid #334155;
-                border-radius: 8px;
-                padding: 8px 12px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #33c3a0;
-            }
-        """)
-        self.search_input.textChanged.connect(self.on_search_text_changed)
-        hero_top_row.addWidget(self.search_input)
 
         # IP Address and WiFi SSID label
         ip_address = self.get_ip_address()
         wifi_ssid = self.get_wifi_ssid()
         is_wifi = self.is_wifi_connection()
-        
+
         # Initialize cache for WiFi info
         self._cached_ip_address = ip_address
         self._cached_wifi_ssid = wifi_ssid
         self._cached_is_wifi = is_wifi
         self._last_wifi_check = time.time()
-        
+
         import logging
         logging.info(f"IP: {ip_address}, WiFi SSID: '{wifi_ssid}', Is WiFi: {is_wifi}")
-        
+
         if is_wifi:
             if wifi_ssid:
                 ip_text = f"WiFi: {wifi_ssid} • {ip_address}"
@@ -4043,13 +4067,13 @@ class LauncherWindow(QMainWindow):
                 ip_text = f"WiFi • {ip_address}"
         else:
             ip_text = f"Ethernet • {ip_address}"
-        
+
         self.ip_label = QLabel(ip_text)
         self.ip_label.setObjectName("ipLabel")
         self.ip_label.setFont(QFont("Sans Serif", max(13, self.ui_metrics["settings_button_font"] - 5)))
         self.ip_label.setStyleSheet("color: #8b949e; padding-right: 8px;")
         hero_top_row.addWidget(self.ip_label)
-        
+
         # Start the IP update timer
         self.ip_update_timer.start()
 
@@ -4062,7 +4086,7 @@ class LauncherWindow(QMainWindow):
             network_button.setIcon(white_icon)
             network_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
         network_button.setToolTip("Network Settings")
-        network_button.setCursor(Qt.PointingHandCursor)
+        network_button.setCursor(Qt.CursorShape.PointingHandCursor)
         network_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
         network_button.clicked.connect(self.open_network_settings)
         hero_top_row.addWidget(network_button)
@@ -4076,7 +4100,7 @@ class LauncherWindow(QMainWindow):
             bluetooth_button.setIcon(white_icon)
             bluetooth_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
         bluetooth_button.setToolTip("Bluetooth Settings")
-        bluetooth_button.setCursor(Qt.PointingHandCursor)
+        bluetooth_button.setCursor(Qt.CursorShape.PointingHandCursor)
         bluetooth_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
         bluetooth_button.clicked.connect(self.open_bluetooth_settings)
         hero_top_row.addWidget(bluetooth_button)
@@ -4090,7 +4114,7 @@ class LauncherWindow(QMainWindow):
             sound_button.setIcon(white_icon)
             sound_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
         sound_button.setToolTip("Sound Settings")
-        sound_button.setCursor(Qt.PointingHandCursor)
+        sound_button.setCursor(Qt.CursorShape.PointingHandCursor)
         sound_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
         sound_button.clicked.connect(self.open_sound_settings)
         hero_top_row.addWidget(sound_button)
@@ -4104,7 +4128,7 @@ class LauncherWindow(QMainWindow):
             brightness_button.setIcon(white_icon)
             brightness_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
         brightness_button.setToolTip("Brightness Settings")
-        brightness_button.setCursor(Qt.PointingHandCursor)
+        brightness_button.setCursor(Qt.CursorShape.PointingHandCursor)
         brightness_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
         brightness_button.clicked.connect(self.open_brightness_settings)
         hero_top_row.addWidget(brightness_button)
@@ -4118,7 +4142,7 @@ class LauncherWindow(QMainWindow):
             shutdown_button.setIcon(white_icon)
             shutdown_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
         shutdown_button.setToolTip("Shutdown")
-        shutdown_button.setCursor(Qt.PointingHandCursor)
+        shutdown_button.setCursor(Qt.CursorShape.PointingHandCursor)
         shutdown_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
         shutdown_button.clicked.connect(self.shutdown_system)
         hero_top_row.addWidget(shutdown_button)
@@ -4132,7 +4156,7 @@ class LauncherWindow(QMainWindow):
             restart_button.setIcon(white_icon)
             restart_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
         restart_button.setToolTip("Restart")
-        restart_button.setCursor(Qt.PointingHandCursor)
+        restart_button.setCursor(Qt.CursorShape.PointingHandCursor)
         restart_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
         restart_button.clicked.connect(self.restart_system)
         hero_top_row.addWidget(restart_button)
@@ -4146,10 +4170,10 @@ class LauncherWindow(QMainWindow):
             update_button.setIcon(white_icon)
             update_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
         update_button.setToolTip("Updates")
-        update_button.setCursor(Qt.PointingHandCursor)
+        update_button.setCursor(Qt.CursorShape.PointingHandCursor)
         update_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
-        update_button.setPopupMode(QToolButton.InstantPopup)
-        
+        update_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+
         # Create update menu
         update_menu = QMenu(self)
         update_menu.setStyleSheet("""
@@ -4170,13 +4194,13 @@ class LauncherWindow(QMainWindow):
                 color: #09110f;
             }
         """)
-        
+
         system_update_action = update_menu.addAction("🖥️  System Update")
         system_update_action.triggered.connect(self.update_system)
-        
+
         app_update_action = update_menu.addAction("📱  App Update")
         app_update_action.triggered.connect(self.update_app)
-        
+
         update_button.setMenu(update_menu)
         hero_top_row.addWidget(update_button)
 
@@ -4189,7 +4213,7 @@ class LauncherWindow(QMainWindow):
             remote_button.setIcon(white_icon)
             remote_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
         remote_button.setToolTip("Remote Control Settings")
-        remote_button.setCursor(Qt.PointingHandCursor)
+        remote_button.setCursor(Qt.CursorShape.PointingHandCursor)
         remote_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
         remote_button.clicked.connect(self.open_remote_settings)
         hero_top_row.addWidget(remote_button)
@@ -4203,7 +4227,7 @@ class LauncherWindow(QMainWindow):
             auto_button.setIcon(white_icon)
             auto_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
         auto_button.setToolTip("Auto-Open")
-        auto_button.setCursor(Qt.PointingHandCursor)
+        auto_button.setCursor(Qt.CursorShape.PointingHandCursor)
         auto_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
         auto_button.clicked.connect(self.open_settings)
         hero_top_row.addWidget(auto_button)
@@ -4212,7 +4236,7 @@ class LauncherWindow(QMainWindow):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         scroll.setObjectName("tileScroll")
         self.tile_scroll = scroll
         container = QWidget()
@@ -4220,7 +4244,7 @@ class LauncherWindow(QMainWindow):
         self.tile_stack = QVBoxLayout(container)
         self.tile_stack.setContentsMargins(8, 8, 8, 8)
         self.tile_stack.setSpacing(self.ui_metrics["tile_stack_spacing"])
-        self.tile_stack.setAlignment(Qt.AlignTop)
+        self.tile_stack.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.populate_tiles()
 
@@ -4231,7 +4255,7 @@ class LauncherWindow(QMainWindow):
         footer.setObjectName("footerHint")
         footer.setWordWrap(True)
         footer.setFont(QFont("Sans Serif", self.ui_metrics["footer_font"]))
-        footer.setAlignment(Qt.AlignCenter)
+        footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(footer)
 
         auto_launch_status_row = QHBoxLayout()
@@ -4243,13 +4267,13 @@ class LauncherWindow(QMainWindow):
         self.auto_launch_status_label.setObjectName("autoLaunchStatus")
         self.auto_launch_status_label.setWordWrap(True)
         self.auto_launch_status_label.setFont(QFont("Sans Serif", self.ui_metrics["status_font"]))
-        self.auto_launch_status_label.setAlignment(Qt.AlignCenter)
+        self.auto_launch_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.auto_launch_status_label.hide()
         auto_launch_status_row.addWidget(self.auto_launch_status_label)
 
         self.auto_launch_cancel_button = QPushButton("Cancel Auto-Open")
         self.auto_launch_cancel_button.setObjectName("autoLaunchCancelButton")
-        self.auto_launch_cancel_button.setCursor(Qt.PointingHandCursor)
+        self.auto_launch_cancel_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.auto_launch_cancel_button.clicked.connect(self.toggle_auto_launch_pause)
         self.auto_launch_cancel_button.hide()
         auto_launch_status_row.addWidget(self.auto_launch_cancel_button)
@@ -4685,7 +4709,7 @@ class LauncherWindow(QMainWindow):
         self._icon_request_token += 1
         request_token = self._icon_request_token
 
-        categories = self.get_categorized_entries(self.search_filter)
+        categories = self.get_categorized_entries()
         for category_name, entries in categories:
             section = QWidget()
             section.setProperty("rowSection", "true")
@@ -4704,18 +4728,18 @@ class LauncherWindow(QMainWindow):
                     if not icon_pixmap.isNull():
                         icon_label.setPixmap(icon_pixmap)
                         icon_label.setFixedSize(32, 32)
-                    
+
                     text_label = QLabel(category_name)
                     text_label.setStyleSheet("color: #f1f5f9;")
-                    text_label.setFont(QFont("Sans Serif", 20, QFont.Bold))
-                    
+                    text_label.setFont(QFont("Sans Serif", 20, QFont.Weight.Bold))
+
                     header_layout = QHBoxLayout()
                     header_layout.setContentsMargins(0, 0, 0, 0)
                     header_layout.setSpacing(10)
                     header_layout.addWidget(icon_label)
                     header_layout.addWidget(text_label)
                     header_layout.addStretch()
-                    
+
                     label = QWidget()
                     label.setLayout(header_layout)
                     label.setProperty("rowHeading", "true")
@@ -4734,18 +4758,18 @@ class LauncherWindow(QMainWindow):
                     if not icon_pixmap.isNull():
                         icon_label.setPixmap(icon_pixmap)
                         icon_label.setFixedSize(32, 32)
-                    
+
                     text_label = QLabel(category_name)
                     text_label.setStyleSheet("color: #f1f5f9;")
-                    text_label.setFont(QFont("Sans Serif", 20, QFont.Bold))
-                    
+                    text_label.setFont(QFont("Sans Serif", 20, QFont.Weight.Bold))
+
                     header_layout = QHBoxLayout()
                     header_layout.setContentsMargins(0, 0, 0, 0)
                     header_layout.setSpacing(10)
                     header_layout.addWidget(icon_label)
                     header_layout.addWidget(text_label)
                     header_layout.addStretch()
-                    
+
                     label = QWidget()
                     label.setLayout(header_layout)
                     label.setProperty("rowHeading", "true")
@@ -4761,10 +4785,10 @@ class LauncherWindow(QMainWindow):
 
             row_scroll = QScrollArea()
             row_scroll.setProperty("rowScroll", "true")
-            row_scroll.setFrameShape(QScrollArea.NoFrame)
+            row_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
             row_scroll.setWidgetResizable(False)
-            row_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            row_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            row_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            row_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             row_scroll.setFixedHeight(self.ui_metrics["row_scroll_height"])
 
             row_widget = DropRowWidget()
@@ -4792,13 +4816,13 @@ class LauncherWindow(QMainWindow):
                 tile.entry_kind = entry["kind"]
                 tile.entry_item = app
                 tile.clicked.connect(lambda checked=False, item=app, kind=entry["kind"]: self.launch_app(item, kind))
-                
+
                 # Create callbacks with proper closure
                 current_app = app
                 current_kind = entry["kind"]
                 current_index = card_index
                 current_entries = entries
-                
+
                 card = AppCard(
                     tile,
                     lambda checked=False, item=current_app, kind=current_kind: self.prompt_edit_entry(kind, item),
@@ -4809,13 +4833,13 @@ class LauncherWindow(QMainWindow):
                     app_data=current_app,
                     kind=current_kind,
                 )
-                
+
                 # Update favorite button state
                 is_favorited = self.is_app_favorited(current_app, current_kind)
                 if card.favorite_button:
                     card.favorite_button.setText("★" if is_favorited else "☆")
                     card.favorite_button.setToolTip("Remove from favorites" if is_favorited else "Add to favorites")
-                
+
                 tile.card_shell = card
                 tile.row_scroll = row_scroll
                 tile.section_widget = section
@@ -4856,10 +4880,10 @@ class LauncherWindow(QMainWindow):
         add_section_layout.addWidget(add_label)
         add_row_scroll = QScrollArea()
         add_row_scroll.setProperty("rowScroll", "true")
-        add_row_scroll.setFrameShape(QScrollArea.NoFrame)
+        add_row_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         add_row_scroll.setWidgetResizable(False)
-        add_row_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        add_row_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        add_row_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        add_row_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         add_row_scroll.setFixedHeight(self.ui_metrics["row_scroll_height"])
         add_row_widget = DropRowWidget()
         add_row_widget.setProperty("rowContent", "true")
@@ -4888,80 +4912,10 @@ class LauncherWindow(QMainWindow):
 
         self.reset_auto_launch_timer()
 
-    def show_loading_overlay(self, message: str = "Loading..."):
-        """Show a loading overlay with message"""
-        if self.loading_overlay is None:
-            self.loading_overlay = QWidget(self)
-            self.loading_overlay.setObjectName("loadingOverlay")
-            self.loading_overlay.setStyleSheet("""
-                QWidget#loadingOverlay {
-                    background-color: rgba(15, 23, 42, 0.9);
-                    border-radius: 12px;
-                }
-            """)
-            self.loading_overlay.setFixedSize(400, 200)
-            
-            layout = QVBoxLayout(self.loading_overlay)
-            layout.setAlignment(Qt.AlignCenter)
-            
-            self.loading_label = QLabel(message)
-            self.loading_label.setObjectName("loadingLabel")
-            self.loading_label.setStyleSheet("""
-                QLabel {
-                    color: #f1f5f9;
-                    font-size: 18px;
-                    font-weight: bold;
-                    background-color: transparent;
-                }
-            """)
-            self.loading_label.setAlignment(Qt.AlignCenter)
-            layout.addWidget(self.loading_label)
-            
-            # Center the overlay
-            self.loading_overlay.setParent(self)
-        
-        self.loading_label.setText(message)
-        
-        # Center the overlay on the main window
-        if self.loading_overlay.parent() is None:
-            self.loading_overlay.setParent(self)
-        
-        x = (self.width() - self.loading_overlay.width()) // 2
-        y = (self.height() - self.loading_overlay.height()) // 2
-        self.loading_overlay.move(x, y)
-        self.loading_overlay.show()
-        self.loading_overlay.raise_()
-    
-    def hide_loading_overlay(self):
-        """Hide the loading overlay"""
-        if self.loading_overlay:
-            self.loading_overlay.hide()
-
-    def on_search_text_changed(self, text: str):
-        """Handle search text changes"""
-        self.search_filter = text
-        self.is_search_active = bool(text.strip())
-        
-        # Save focus state
-        focused_widget = QApplication.focusWidget()
-        
-        self.populate_tiles()
-        
-        # Restore focus to search input if it was focused
-        if focused_widget == self.search_input:
-            self.search_input.setFocus()
-            # Move cursor to end
-            self.search_input.setCursorPosition(len(text))
-        elif self.tiles:
-            self.focus_first_tile()
-
-    def get_categorized_entries(self, filter_text: str = ""):
+    def get_categorized_entries(self):
         native_entries = []
         web_entries = []
         favorites = self.config.get("favorites", [])
-        
-        # Get all categories from config
-        user_categories = self.config.get("categories", {})
 
         for idx, app in enumerate(self.config.get("native_apps", [])):
             if not is_installed(app.get("cmd", "")):
@@ -4969,12 +4923,6 @@ class LauncherWindow(QMainWindow):
             subtitle = app.get("cmd", "").split()[0] if app.get("cmd") else "Application"
             app_id = self.get_app_id(app)
             is_favorited = any(f.get("id") == app_id and f.get("kind") == "native" for f in favorites)
-            
-            # Apply search filter
-            app_name = app.get("name", "").lower()
-            if filter_text and filter_text.lower() not in app_name:
-                continue
-                
             native_entries.append({
                 "kind": "native",
                 "item": app,
@@ -4989,12 +4937,6 @@ class LauncherWindow(QMainWindow):
             subtitle = url.replace("https://", "").replace("http://", "")
             app_id = self.get_app_id(app)
             is_favorited = any(f.get("id") == app_id and f.get("kind") == "web" for f in favorites)
-            
-            # Apply search filter
-            app_name = app.get("name", "").lower()
-            if filter_text and filter_text.lower() not in app_name:
-                continue
-            
             web_entries.append({
                 "kind": "web",
                 "item": app,
@@ -5003,41 +4945,16 @@ class LauncherWindow(QMainWindow):
                 "favorited": is_favorited,
                 "original_index": idx,
             })
-        
+
         # Sort entries: favorited first, then by original order
         native_entries.sort(key=lambda x: (not x.get("favorited", False), x.get("original_index", 0)))
         web_entries.sort(key=lambda x: (not x.get("favorited", False), x.get("original_index", 0)))
 
         categories = []
-        
-        # Add Favorites row if not filtering and there are favorited apps
-        if not filter_text:
-            favorite_entries = [e for e in native_entries + web_entries if e.get("favorited", False)]
-            if favorite_entries:
-                categories.append(("⭐ Favorites", favorite_entries))
-        
-        # Add user-defined categories if not filtering
-        if not filter_text and user_categories:
-            for category_name, app_names in user_categories.items():
-                category_entries = []
-                for entry in native_entries + web_entries:
-                    if entry["item"].get("name") in app_names:
-                        category_entries.append(entry)
-                if category_entries:
-                    categories.append((category_name, category_entries))
-        
-        # Add default categories if no filter or no user categories
-        if not filter_text:
-            if native_entries:
-                categories.append(("Native Apps", native_entries))
-            if web_entries:
-                categories.append(("Web Apps", web_entries))
-        else:
-            # When filtering, show all matching apps in a single category
-            all_filtered = native_entries + web_entries
-            if all_filtered:
-                categories.append((f"Search Results: '{filter_text}'", all_filtered))
-        
+        if native_entries:
+            categories.append(("Native Apps", native_entries))
+        if web_entries:
+            categories.append(("Web Apps", web_entries))
         return categories
 
     def get_installed_apps(self):
@@ -5045,20 +4962,20 @@ class LauncherWindow(QMainWindow):
         import base64
         apps_list = []
         categories = self.get_categorized_entries()
-        
+
         for category_name, entries in categories:
             for entry in entries:
                 item = entry["item"]
                 app_id = item.get("id", item.get("name", "")).lower().replace(" ", "_")
                 app_name = item.get("name", "Unknown")
-                
+
                 # Resolve actual icon path
                 icon_path = ""
                 if entry["kind"] == "native":
                     icon_path = resolve_native_icon(item)
                 else:
                     icon_path = fetch_web_icon(item)
-                
+
                 # Convert icon to base64 data URI
                 icon_data = ""
                 if icon_path:
@@ -5083,7 +5000,7 @@ class LauncherWindow(QMainWindow):
                                 icon_data = f"data:{mime_type};base64,{icon_b64}"
                     except Exception as e:
                         logging.warning("Failed to encode icon for %s: %s", app_name, e)
-                
+
                 apps_list.append({
                     "id": app_id,
                     "name": app_name,
@@ -5091,29 +5008,29 @@ class LauncherWindow(QMainWindow):
                     "icon": icon_data,  # Base64 data URI
                     "category": category_name
                 })
-        
+
         return apps_list
 
     def launch_app_by_id(self, app_id):
         """Launch an app by its ID from remote control"""
         categories = self.get_categorized_entries()
-        
+
         for category_name, entries in categories:
             for entry in entries:
                 item = entry["item"]
                 item_id = item.get("id", item.get("name", "")).lower().replace(" ", "_")
-                
+
                 if item_id == app_id:
                     logging.info("Launching app: %s (%s)", app_id, entry["kind"])
                     self.launch_app(item, entry["kind"])
                     return
-        
+
         logging.warning("App not found: %s", app_id)
 
     def remove_app_by_id(self, app_id: str):
         """Remove an app by its ID from config"""
         app_id_normalized = app_id.lower().replace(" ", "_")
-        
+
         # Try to remove from native apps
         native_apps = self.config.get("native_apps", [])
         for i, app in enumerate(native_apps):
@@ -5127,7 +5044,7 @@ class LauncherWindow(QMainWindow):
                 # Refresh tiles immediately on main thread
                 QTimer.singleShot(0, self.populate_tiles)
                 return
-        
+
         # Try to remove from web apps
         web_apps = self.config.get("web_apps", [])
         for i, app in enumerate(web_apps):
@@ -5141,14 +5058,14 @@ class LauncherWindow(QMainWindow):
                 # Refresh tiles immediately on main thread
                 QTimer.singleShot(0, self.populate_tiles)
                 return
-        
+
         logging.warning("App not found for removal: %s", app_id)
 
     def add_app_from_remote(self, app_id: str, app_name: str, app_kind: str):
         """Add an app to config from remote control request"""
         try:
             app_id_normalized = app_id.lower().replace(" ", "_")
-            
+
             # Check if app already exists
             categories = self.get_categorized_entries()
             for category_name, entries in categories:
@@ -5157,13 +5074,13 @@ class LauncherWindow(QMainWindow):
                     item_id = item.get("id", item.get("name", "")).lower().replace(" ", "_")
                     if item_id == app_id_normalized:
                         return False, f"{app_name} is already in your launcher"
-            
+
             # Find the app in desktop files for native apps
             if app_kind == "native":
                 from pathlib import Path
                 desktop_dirs = desktop_file_locations()
                 app_entry = None
-                
+
                 for desktop_dir in desktop_dirs:
                     if not desktop_dir.exists():
                         continue
@@ -5189,7 +5106,7 @@ class LauncherWindow(QMainWindow):
                             continue
                     if app_entry:
                         break
-                
+
                 if app_entry:
                     native_apps = self.config.get("native_apps", [])
                     native_apps.append(app_entry)
@@ -5201,10 +5118,10 @@ class LauncherWindow(QMainWindow):
                     return True, f"{app_name} added to launcher"
                 else:
                     return False, f"Could not find {app_name} on your system"
-            
+
             # For web apps, they should already be in config
             return False, f"Web apps must be added through settings"
-            
+
         except Exception as e:
             logging.exception("Failed to add app")
             return False, f"Error adding app: {str(e)}"
@@ -5377,7 +5294,7 @@ class LauncherWindow(QMainWindow):
     def get_app_id(self, app):
         """Get a unique identifier for an app."""
         return app.get("id", app.get("name", "")).lower().replace(" ", "_")
-    
+
     def is_app_favorited(self, app, kind):
         """Check if an app is in the favorites list."""
         favorites = self.config.get("favorites", [])
@@ -5386,12 +5303,12 @@ class LauncherWindow(QMainWindow):
             if fav.get("id") == app_id and fav.get("kind") == kind:
                 return True
         return False
-    
+
     def toggle_favorite(self, app, kind):
         """Toggle an app's favorite status."""
         favorites = self.config.get("favorites", [])
         app_id = self.get_app_id(app)
-        
+
         # Check if already favorited and remove if found
         was_favorited = False
         for i, fav in enumerate(favorites):
@@ -5400,7 +5317,7 @@ class LauncherWindow(QMainWindow):
                 favorites.pop(i)
                 was_favorited = True
                 break
-        
+
         # Only add if it wasn't favorited before
         if not was_favorited:
             # Add to favorites
@@ -5409,7 +5326,7 @@ class LauncherWindow(QMainWindow):
                 "kind": kind,
                 "name": app.get("name", "")
             })
-        
+
         self.config["favorites"] = favorites
         try:
             save_config(self.config_path, self.config)
@@ -5418,15 +5335,15 @@ class LauncherWindow(QMainWindow):
             logging.exception("Failed to save favorites")
             QMessageBox.critical(self, "Save Failed", f"Could not save favorites:\n{exc}")
             return
-        
+
         # Refresh tiles to update order and button states
         QTimer.singleShot(0, self.populate_tiles)
-    
+
     def reorder_app(self, app, kind, direction, current_index, entries):
         """Move an app left or right in the order."""
         collection_name = "native_apps" if kind == "native" else "web_apps"
         collection = self.config.get(collection_name, [])
-        
+
         # Find the app in the config
         app_id = self.get_app_id(app)
         config_index = -1
@@ -5434,10 +5351,10 @@ class LauncherWindow(QMainWindow):
             if self.get_app_id(item) == app_id:
                 config_index = i
                 break
-        
+
         if config_index == -1:
             return
-        
+
         # Calculate new index
         if direction == "left" and config_index > 0:
             new_index = config_index - 1
@@ -5445,11 +5362,11 @@ class LauncherWindow(QMainWindow):
             new_index = config_index + 1
         else:
             return  # Can't move further
-        
+
         # Swap in config
         collection[config_index], collection[new_index] = collection[new_index], collection[config_index]
         self.config[collection_name] = collection
-        
+
         try:
             save_config(self.config_path, self.config)
             logging.info("Moved %s %s", app.get("name", ""), direction)
@@ -5457,7 +5374,7 @@ class LauncherWindow(QMainWindow):
             logging.exception("Failed to save config")
             QMessageBox.critical(self, "Save Failed", f"Could not save config:\n{exc}")
             return
-        
+
         # Refresh tiles immediately
         QTimer.singleShot(0, self.populate_tiles)
 
@@ -5466,17 +5383,17 @@ class LauncherWindow(QMainWindow):
         import logging
         source_kind = source_data.get("kind")
         source_app_id = source_data.get("app_id")
-        
+
         logging.info(f"handle_card_drop called: source={source_app_id} ({source_kind}), target={target_app} ({target_kind})")
-        
+
         # Only allow reordering within the same collection
         if source_kind != target_kind:
             logging.info("Different kinds, skipping reorder")
             return
-        
+
         collection_name = "native_apps" if source_kind == "native" else "web_apps"
         collection = self.config.get(collection_name, [])
-        
+
         # Find source app by ID
         source_app = None
         for item in collection:
@@ -5488,39 +5405,39 @@ class LauncherWindow(QMainWindow):
                 if item.get("url", "") == source_app_id:
                     source_app = item
                     break
-        
+
         if not source_app:
             return
-        
+
         # Find indices in config
         source_id = self.get_app_id(source_app)
         target_id = self.get_app_id(target_app)
-        
+
         source_index = -1
         target_index = -1
-        
+
         for i, item in enumerate(collection):
             if self.get_app_id(item) == source_id:
                 source_index = i
             if self.get_app_id(item) == target_id:
                 target_index = i
-        
+
         if source_index == -1 or target_index == -1 or source_index == target_index:
             logging.info(f"Invalid indices: source={source_index}, target={target_index}")
             return
-        
+
         logging.info(f"Swapping positions: {source_index} -> {target_index}")
-        
+
         # Remove source from its position
         source_item = collection.pop(source_index)
-        
+
         # Adjust target index if source was before it
         if source_index < target_index:
             target_index -= 1
-        
+
         # Insert source at target position
         collection.insert(target_index, source_item)
-        
+
         # Save config
         self.config[collection_name] = collection
         try:
@@ -5530,7 +5447,7 @@ class LauncherWindow(QMainWindow):
             logging.exception("Failed to save config")
             QMessageBox.critical(self, "Save Failed", f"Could not save config:\n{exc}")
             return
-        
+
         # Refresh tiles
         QTimer.singleShot(0, self.populate_tiles)
 
@@ -5562,15 +5479,7 @@ class LauncherWindow(QMainWindow):
                 return
 
         # Hash and save credentials
-        password_hash, password_salt = hash_remote_password(password)
-        # Also generate simple SHA-256 hash for challenge-response authentication
-        password_simple_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
-        self.config["auth"] = {
-            "username": username,
-            "password_hash": password_hash,
-            "password_salt": password_salt,
-            "password_simple_hash": password_simple_hash
-        }
+        self.config["auth"] = hash_remote_credentials(username, password)
         save_config(self.config_path, self.config)
         QMessageBox.information(self, "Saved", "Remote login credentials updated.")
 
@@ -5652,7 +5561,7 @@ class LauncherWindow(QMainWindow):
             return [], "", "NetworkManager tools are not installed. Install `network-manager` to manage Wi-Fi here."
 
         import time
-        
+
         # Turn on WiFi if it's disabled
         try:
             # Check current WiFi status
@@ -5663,7 +5572,7 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=5
             )
-            
+
             # If WiFi is off, turn it on
             if "disabled" in radio_result.stdout.lower() or radio_result.returncode != 0:
                 subprocess.run(
@@ -5676,7 +5585,7 @@ class LauncherWindow(QMainWindow):
                 time.sleep(3)  # Wait for WiFi to enable
         except Exception:
             logging.exception("Failed to enable Wi-Fi radio")
-        
+
         # Try to enable NetworkManager if it's not running
         try:
             systemctl_path = shutil.which("systemctl")
@@ -5918,7 +5827,7 @@ class LauncherWindow(QMainWindow):
         nmcli = shutil.which("nmcli")
         if not nmcli:
             return False, "NetworkManager tools are not installed on this device."
-            
+
         try:
             # First disconnect if currently connected
             subprocess.run(
@@ -5928,7 +5837,7 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=15,
             )
-            
+
             # Then delete the connection profile to forget it
             result = subprocess.run(
                 [nmcli, "connection", "delete", ssid],
@@ -5937,13 +5846,13 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=10,
             )
-            
+
             if result.returncode == 0:
                 return True, f"Forgot network {ssid}."
             else:
                 message = (result.stderr or result.stdout or "Unknown error").strip()
                 return False, f"Could not forget {ssid}: {message}"
-                
+
         except Exception as exc:
             logging.exception("Failed to forget Wi-Fi network")
             return False, f"Could not forget {ssid}: {exc}"
@@ -5952,12 +5861,12 @@ class LauncherWindow(QMainWindow):
         bluetoothctl = shutil.which("bluetoothctl")
         if not bluetoothctl:
             return [], "", "bluetoothctl is not installed. Install `bluez` to manage Bluetooth here."
-        
+
         current_bluetooth = ""
         devices = {}
         import time
         import re
-        
+
         try:
             # Try to start Bluetooth service if it's not running
             systemctl_path = shutil.which("systemctl")
@@ -5979,7 +5888,7 @@ class LauncherWindow(QMainWindow):
                         timeout=10
                     )
                     time.sleep(2)  # Reduced from 3s
-            
+
             # Start interactive bluetoothctl session
             bt_proc = subprocess.Popen(
                 [bluetoothctl],
@@ -5989,12 +5898,12 @@ class LauncherWindow(QMainWindow):
                 text=True,
                 bufsize=1
             )
-            
+
             # First, try to unblock Bluetooth if rfkill is available
             rfkill_path = shutil.which("rfkill") or shutil.which("rfkill", path=os.environ.get("PATH", "") + os.pathsep + "/usr/sbin")
             if rfkill_path:
                 subprocess.run([rfkill_path, "unblock", "bluetooth"], capture_output=True, check=False, timeout=5)
-            
+
             # Check current controller state
             show_result = subprocess.run(
                 [bluetoothctl, "show"],
@@ -6003,7 +5912,7 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=10
             )
-            
+
             bluetooth_was_off = True
             if show_result.returncode == 0:
                 for line in show_result.stdout.splitlines():
@@ -6011,71 +5920,71 @@ class LauncherWindow(QMainWindow):
                         if 'yes' in line.lower():
                             bluetooth_was_off = False
                         break
-            
+
             # Power on the controller - this will turn on Bluetooth if it's off
             if bt_proc.stdin:
                 bt_proc.stdin.write("power on\n")
                 bt_proc.stdin.flush()
                 time.sleep(2)  # Reduced from 4s
-            
+
             # Verify power on worked by checking show output
             if bt_proc.stdin:
                 bt_proc.stdin.write("show\n")
                 bt_proc.stdin.flush()
                 time.sleep(1)  # Reduced from 2s
-            
+
             # List controllers to confirm
             if bt_proc.stdin:
                 bt_proc.stdin.write("list\n")
                 bt_proc.stdin.flush()
                 time.sleep(0.5)  # Reduced from 1s
-            
+
             # Enable the controller (in case it was disabled)
             if bt_proc.stdin:
                 bt_proc.stdin.write("enable\n")
                 bt_proc.stdin.flush()
                 time.sleep(1)  # Reduced from 2s
-            
+
             # Make controller discoverable and pairable
             if bt_proc.stdin:
                 bt_proc.stdin.write("discoverable on\n")
                 bt_proc.stdin.flush()
                 time.sleep(0.5)  # Reduced from 1s
-                
+
                 bt_proc.stdin.write("pairable on\n")
                 bt_proc.stdin.flush()
                 time.sleep(0.5)  # Reduced from 1s
-            
+
             # Enable agent
             if bt_proc.stdin:
                 bt_proc.stdin.write("agent on\n")
                 bt_proc.stdin.flush()
                 time.sleep(0.5)  # Reduced from 1s
-                
+
                 bt_proc.stdin.write("default-agent\n")
                 bt_proc.stdin.flush()
                 time.sleep(0.5)  # Reduced from 1s
-            
+
             # Start scanning - this will discover ALL nearby devices
             if bt_proc.stdin:
                 bt_proc.stdin.write("scan on\n")
                 bt_proc.stdin.flush()
-            
+
             # Wait for scan to discover devices (reduced from 15s to 8s)
             time.sleep(8)
-            
+
             # Stop scanning
             if bt_proc.stdin:
                 bt_proc.stdin.write("scan off\n")
                 bt_proc.stdin.flush()
                 time.sleep(1)  # Reduced from 2s
-            
+
             # Get all discovered devices
             if bt_proc.stdin:
                 bt_proc.stdin.write("devices\n")
                 bt_proc.stdin.flush()
                 time.sleep(1)  # Reduced from 2s
-            
+
             # Get the output
             bt_proc.terminate()
             try:
@@ -6083,7 +5992,7 @@ class LauncherWindow(QMainWindow):
             except subprocess.TimeoutExpired:
                 bt_proc.kill()
                 stdout, stderr = bt_proc.communicate(timeout=5)
-            
+
             # Parse discovered devices from output
             # Format: "Device XX:XX:XX:XX:XX:XX Device Name"
             device_pattern = re.compile(r'^Device\s+([\w:]+)\s+(.+)$', re.MULTILINE)
@@ -6098,7 +6007,7 @@ class LauncherWindow(QMainWindow):
                         "connected": False,
                         "paired": False
                     }
-            
+
             # Get detailed info for each device to check connection/paired status
             for mac in list(devices.keys()):
                 try:
@@ -6109,24 +6018,24 @@ class LauncherWindow(QMainWindow):
                         check=False,
                         timeout=10,
                     )
-                    
+
                     if info_result.returncode == 0:
                         is_connected = False
                         is_paired = False
-                        
+
                         for line in info_result.stdout.splitlines():
                             if 'Connected:' in line and 'yes' in line.lower():
                                 is_connected = True
                             if 'Paired:' in line and 'yes' in line.lower():
                                 is_paired = True
-                        
+
                         # Update label with status
                         status_parts = []
                         if is_connected:
                             status_parts.append("Connected")
                         if is_paired:
                             status_parts.append("Paired")
-                        
+
                         if status_parts:
                             devices[mac]["label"] = f"{devices[mac]['name']} ({mac}) [{' | '.join(status_parts)}]"
                             devices[mac]["connected"] = is_connected
@@ -6135,7 +6044,7 @@ class LauncherWindow(QMainWindow):
                             devices[mac]["label"] = f"{devices[mac]['name']} ({mac}) [Discovered]"
                 except Exception:
                     pass
-            
+
             # Also check paired-devices to ensure completeness
             try:
                 paired_result = subprocess.run(
@@ -6145,7 +6054,7 @@ class LauncherWindow(QMainWindow):
                     check=False,
                     timeout=10,
                 )
-                
+
                 if paired_result.returncode == 0:
                     for line in paired_result.stdout.splitlines():
                         match = re.match(r'Device\s+([\w:]+)\s+(.+)', line)
@@ -6162,21 +6071,21 @@ class LauncherWindow(QMainWindow):
                                 }
             except Exception:
                 pass
-                
+
         except Exception as exc:
             import logging
             logging.exception("Failed to scan Bluetooth devices")
             return [], "", f"Could not scan: {exc}"
-        
+
         # Convert to list and sort: connected first, then paired, then by name
         device_list = list(devices.values())
         device_list.sort(key=lambda d: (not d.get("connected", False), not d.get("paired", False), d.get("name", "")))
-            
+
         if not device_list:
             message = "No Bluetooth devices found. Try: 1) sudo rfkill unblock bluetooth, 2) Ensure Bluetooth service is running (sudo systemctl status bluetooth), 3) Make devices discoverable."
         else:
             message = f"Found {len(device_list)} device(s)."
-        
+
         return device_list, current_bluetooth, message
 
     def connect_to_bluetooth(self, device_info):
@@ -6190,11 +6099,11 @@ class LauncherWindow(QMainWindow):
         bluetoothctl = shutil.which("bluetoothctl")
         if not bluetoothctl:
             return False, "bluetoothctl is not installed on this device.", ""
-            
+
         try:
             import logging
             logging.info(f"Attempting to connect to Bluetooth device: {mac}")
-            
+
             # Step 1: Check if device is already paired
             info_res = subprocess.run(
                 [bluetoothctl, "info", mac],
@@ -6203,13 +6112,13 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=5,
             )
-            
+
             is_paired = "Paired: yes" in info_res.stdout
             is_connected = "Connected: yes" in info_res.stdout
-            
+
             if is_connected:
                 return True, f"Already connected to {mac}.", mac
-            
+
             # Step 2: If not paired, pair first with better error handling
             if not is_paired:
                 logging.info(f"Device {mac} is not paired. Attempting to pair...")
@@ -6220,16 +6129,16 @@ class LauncherWindow(QMainWindow):
                     check=False,
                     timeout=30,  # Increased timeout for pairing
                 )
-                
+
                 pair_output = (pair_result.stdout or "") + (pair_result.stderr or "")
                 logging.info(f"Pair result: {pair_output}")
-                
+
                 # Check if pairing was successful
                 if "Pairing successful" not in pair_output and pair_result.returncode != 0:
                     # Pairing failed
                     error_msg = (pair_result.stderr or pair_result.stdout or "Unknown pairing error").strip()
                     return False, f"Pairing failed for {mac}: {error_msg[-200:]}", ""
-            
+
             # Step 3: Trust the device (important for automatic reconnection)
             logging.info(f"Trusting device {mac}...")
             trust_result = subprocess.run(
@@ -6241,7 +6150,7 @@ class LauncherWindow(QMainWindow):
             )
             trust_output = (trust_result.stdout or "") + (trust_result.stderr or "")
             logging.info(f"Trust result: {trust_output}")
-            
+
             # Step 4: Connect to the device
             logging.info(f"Connecting to device {mac}...")
             connect_result = subprocess.run(
@@ -6251,14 +6160,14 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=30,  # Increased timeout for connection
             )
-            
+
             connect_output = (connect_result.stdout or "") + (connect_result.stderr or "")
             logging.info(f"Connect result: {connect_output}")
-            
+
             # Check if connection was successful
             if "Connection successful" in connect_output:
                 return True, f"Connected to {mac}.", mac
-            
+
             # Verify connection status
             info_res = subprocess.run(
                 [bluetoothctl, "info", mac],
@@ -6267,10 +6176,10 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=5,
             )
-            
+
             if "Connected: yes" in info_res.stdout:
                 return True, f"Connected to {mac}.", mac
-            
+
             # If we reach here, connection failed
             # Extract meaningful error message
             error_msg = connect_output.strip()
@@ -6283,9 +6192,9 @@ class LauncherWindow(QMainWindow):
                 if error_match:
                     specific_error = error_match.group(1)
                     error_msg = f"Connection failed: {specific_error}. Make sure the device is discoverable and try again."
-            
+
             return False, f"Could not connect to {mac}: {error_msg[-300:]}", ""
-                
+
         except Exception as exc:
             import logging
             logging.exception("Failed to connect to Bluetooth")
@@ -6303,11 +6212,11 @@ class LauncherWindow(QMainWindow):
         bluetoothctl = shutil.which("bluetoothctl")
         if not bluetoothctl:
             return False, "bluetoothctl is not installed on this device."
-            
+
         try:
             import logging
             logging.info(f"Attempting to remove Bluetooth device: {mac}")
-            
+
             # First, disconnect if connected
             subprocess.run(
                 [bluetoothctl, "disconnect", mac],
@@ -6316,7 +6225,7 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=10,
             )
-            
+
             # Remove trust
             subprocess.run(
                 [bluetoothctl, "untrust", mac],
@@ -6325,7 +6234,7 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=10,
             )
-            
+
             # Remove the device
             remove_result = subprocess.run(
                 [bluetoothctl, "remove", mac],
@@ -6334,16 +6243,16 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=15,
             )
-            
+
             remove_output = (remove_result.stdout or "") + (remove_result.stderr or "")
             logging.info(f"Remove result: {remove_output}")
-            
+
             if "Device has been removed" in remove_output or remove_result.returncode == 0:
                 return True, f"Removed device {mac}."
             else:
                 error_msg = (remove_result.stderr or remove_result.stdout or "Unknown error").strip()
                 return False, f"Failed to remove {mac}: {error_msg[-200:]}"
-                
+
         except Exception as exc:
             import logging
             logging.exception("Failed to remove Bluetooth device")
@@ -6354,7 +6263,7 @@ class LauncherWindow(QMainWindow):
         pactl = shutil.which("pactl")
         if not pactl:
             return []
-        
+
         sinks = []
         try:
             result = subprocess.run(
@@ -6364,7 +6273,7 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=10
             )
-            
+
             if result.returncode == 0 and result.stdout.strip():
                 for line in result.stdout.splitlines():
                     parts = line.split()
@@ -6378,7 +6287,7 @@ class LauncherWindow(QMainWindow):
                         })
         except Exception as e:
             logging.error(f"Error getting audio sinks: {e}")
-        
+
         return sinks
 
     def get_sink_friendly_name(self, sink_name):
@@ -6386,7 +6295,7 @@ class LauncherWindow(QMainWindow):
         pactl = shutil.which("pactl")
         if not pactl:
             return sink_name
-        
+
         try:
             result = subprocess.run(
                 [pactl, "get-sink-info", sink_name],
@@ -6395,14 +6304,14 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=5
             )
-            
+
             if result.returncode == 0:
                 for line in result.stdout.splitlines():
                     if "Description:" in line:
                         return line.split("Description:", 1)[1].strip()
         except Exception:
             pass
-        
+
         # Fallback: extract from sink name
         return sink_name.split(".")[-1] if "." in sink_name else sink_name
 
@@ -6411,7 +6320,7 @@ class LauncherWindow(QMainWindow):
         pactl = shutil.which("pactl")
         if not pactl:
             return ""
-        
+
         try:
             result = subprocess.run(
                 [pactl, "get-default-sink"],
@@ -6430,11 +6339,11 @@ class LauncherWindow(QMainWindow):
         """Set the default audio sink"""
         if not sink_name:
             return False
-        
+
         pactl = shutil.which("pactl")
         if not pactl:
             return False
-        
+
         try:
             result = subprocess.run(
                 [pactl, "set-default-sink", sink_name],
@@ -6443,7 +6352,7 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=10
             )
-            
+
             if result.returncode == 0:
                 logging.info(f"Set default audio sink to: {sink_name}")
                 return True
@@ -6460,7 +6369,7 @@ class LauncherWindow(QMainWindow):
             return False, "Git is not installed. Install `git` to enable in-app updates."
 
         app_root = Path(__file__).resolve().parent.parent
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         QApplication.processEvents()
         try:
             if (app_root / ".git").exists():
@@ -6526,7 +6435,7 @@ class LauncherWindow(QMainWindow):
             else:
                 shutil.copy2(child, target)
 
-    def add_native_app(self, name: str, cmd: str, notify: bool = True):
+    def add_native_app(self, name: str, cmd: str):
         native_apps = self.config.setdefault("native_apps", [])
         native_apps.append({"name": name.strip(), "cmd": cmd.strip(), "icon": ""})
 
@@ -6534,18 +6443,15 @@ class LauncherWindow(QMainWindow):
             save_config(self.config_path, self.config)
         except Exception as exc:
             logging.exception("Failed to save config")
-            if notify:
-                QTimer.singleShot(0, lambda: QMessageBox.critical(self, "Save Failed", f"Could not save config:\n{exc}"))
+            QMessageBox.critical(self, "Save Failed", f"Could not save config:\n{exc}")
             native_apps.pop()
             return
 
-        # Schedule GUI updates on main thread
-        QTimer.singleShot(0, lambda: self.populate_tiles())
-        QTimer.singleShot(0, lambda: self.focus_entry_tile("native", native_apps[-1]))
-        if notify:
-            QTimer.singleShot(0, lambda: QMessageBox.information(self, "Added", f"{name.strip()} is now available in Apps."))
+        self.populate_tiles()
+        self.focus_entry_tile("native", native_apps[-1])
+        QMessageBox.information(self, "Added", f"{name.strip()} is now available in Apps.")
 
-    def add_web_app(self, name: str, url: str, notify: bool = True):
+    def add_web_app(self, name: str, url: str):
         normalized_url = self.normalize_url(url)
         web_apps = self.config.setdefault("web_apps", [])
         web_apps.append({"name": name.strip(), "url": normalized_url, "icon": ""})
@@ -6554,16 +6460,13 @@ class LauncherWindow(QMainWindow):
             save_config(self.config_path, self.config)
         except Exception as exc:
             logging.exception("Failed to save config")
-            if notify:
-                QTimer.singleShot(0, lambda: QMessageBox.critical(self, "Save Failed", f"Could not save config:\n{exc}"))
+            QMessageBox.critical(self, "Save Failed", f"Could not save config:\n{exc}")
             web_apps.pop()
             return
 
-        # Schedule GUI updates on main thread
-        QTimer.singleShot(0, lambda: self.populate_tiles())
-        QTimer.singleShot(0, lambda: self.focus_entry_tile("web", web_apps[-1]))
-        if notify:
-            QTimer.singleShot(0, lambda: QMessageBox.information(self, "Added", f"{name.strip()} is now available in Apps."))
+        self.populate_tiles()
+        self.focus_entry_tile("web", web_apps[-1])
+        QMessageBox.information(self, "Added", f"{name.strip()} is now available in Apps.")
 
     def keyPressEvent(self, event):
         if not self.tiles:
@@ -6572,16 +6475,7 @@ class LauncherWindow(QMainWindow):
         key = event.key()
         self.reset_auto_launch_timer()
         if key == Qt.Key_Escape:
-            # Show confirmation dialog before closing
-            reply = QMessageBox.question(
-                self, 
-                "Exit LinuxTV",
-                "Are you sure you want to exit LinuxTV?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
-            if reply == QMessageBox.Yes:
-                self.close()
+            self.close()
             return
 
         if key in (Qt.Key_Right, Qt.Key_Left, Qt.Key_Down, Qt.Key_Up):
@@ -6600,13 +6494,13 @@ class LauncherWindow(QMainWindow):
         """Handle touchpad two-finger scrolling."""
         if not self.tiles:
             return
-        
+
         self.reset_auto_launch_timer()
-        
+
         # Get the angle delta - positive for up/left, negative for down/right
         delta_y = event.angleDelta().y()
         delta_x = event.angleDelta().x()
-        
+
         # Vertical scrolling (up/down)
         if abs(delta_y) > abs(delta_x):
             if delta_y < 0:  # Scroll down
@@ -6619,12 +6513,12 @@ class LauncherWindow(QMainWindow):
                 self.navigate("RIGHT")
             elif delta_x > 0:  # Scroll left
                 self.navigate("LEFT")
-        
+
         event.accept()
 
     def eventFilter(self, obj, event):
         """Event filter to capture wheel events from child widgets."""
-        if event.type() == QEvent.Wheel:
+        if event.type() == QEvent.Type.Wheel:
             # Forward wheel event to the window's wheelEvent
             self.wheelEvent(event)
             return True
@@ -6731,12 +6625,12 @@ class LauncherWindow(QMainWindow):
         active_widget = QApplication.activeWindow()
         return bool(active_widget and active_widget.isVisible())
 
-    def dispatch_remote_key_to_launcher(self, key, modifiers=Qt.NoModifier, text=""):
+    def dispatch_remote_key_to_launcher(self, key, modifiers=Qt.KeyboardModifier.NoModifier, text=""):
         target = QApplication.focusWidget() or QApplication.activeWindow() or self
         if not target:
             return False
 
-        for event_type in (QEvent.KeyPress, QEvent.KeyRelease):
+        for event_type in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
             event = QKeyEvent(event_type, key, modifiers, text)
             QApplication.sendEvent(target, event)
         return True
@@ -7035,14 +6929,14 @@ class LauncherWindow(QMainWindow):
 
     def process_remote_pointer_event(self, event):
         event_type = str(event.get("event", "")).lower()
-        
+
         # If launcher is visible (no active app), move mouse relative to current position
         if not self.active_process or self.active_process.poll() is not None:
             xdotool = shutil.which("xdotool")
             if not xdotool:
                 logging.warning("xdotool is not installed; cannot forward remote pointer event")
                 return
-            
+
             # For launcher screen, just move the mouse relatively
             if event_type == "move":
                 dx = int(round(float(event.get("dx", 0)) * REMOTE_POINTER_SPEED_MULTIPLIER))
@@ -7050,16 +6944,16 @@ class LauncherWindow(QMainWindow):
                 if dx or dy:
                     subprocess.run([xdotool, "mousemove_relative", "--", str(dx), str(dy)], check=False)
                 return
-            
+
             # For clicks on launcher, use current mouse position
             if event_type in ("tap", "click"):
                 subprocess.run([xdotool, "click", "1"], check=False)
                 return
-            
+
             if event_type == "right_click":
                 subprocess.run([xdotool, "click", "3"], check=False)
                 return
-            
+
             if event_type == "scroll":
                 dx = int(round(float(event.get("dx", 0))))
                 dy = int(round(float(event.get("dy", 0))))
@@ -7074,11 +6968,11 @@ class LauncherWindow(QMainWindow):
                     commands.extend([xdotool, "click", "6"])
                 elif dx < 0:
                     commands.extend([xdotool, "click", "7"])
-                
+
                 if commands:
                     subprocess.run(commands, check=False)
                 return
-        
+
         # If an app is running, use the existing logic
         allow_cached = event_type == "move"
         focus_target = event_type != "move"
@@ -7123,7 +7017,7 @@ class LauncherWindow(QMainWindow):
                 commands.extend([xdotool, "click", "6"])
             elif dx < 0:
                 commands.extend([xdotool, "click", "7"])
-            
+
             if commands:
                 subprocess.run(commands, check=False)
             return
@@ -7144,11 +7038,11 @@ class LauncherWindow(QMainWindow):
                     return
                 except Exception:
                     logging.exception("Failed to terminate active app directly, trying xdotool")
-        
+
         # If no tracked process or termination failed, try to close the active window
         logging.info("No tracked process or process already exited, trying to close active window")
         xdotool, active_window = self.active_system_window()
-        
+
         if xdotool and active_window:
             # Don't close the launcher window itself
             if active_window in self.launcher_window_ids():
@@ -7157,16 +7051,16 @@ class LauncherWindow(QMainWindow):
                 self.raise_()
                 self.activateWindow()
                 return
-            
+
             logging.info("Closing active window %s using xdotool", active_window)
             try:
                 # Try to close the window gracefully
                 subprocess.run([xdotool, "windowclose", active_window], check=False, timeout=3)
-                
+
                 # Also try sending Alt+F4 as fallback
                 time.sleep(0.2)
                 subprocess.run([xdotool, "key", "alt+F4"], check=False, timeout=3)
-                
+
                 # Clear the tracked process since we're closing via window
                 self.finish_active_process()
             except Exception as e:
@@ -7177,7 +7071,7 @@ class LauncherWindow(QMainWindow):
     def toggle_fullscreen(self):
         """Toggle fullscreen mode for the active window or launcher."""
         launcher_active = self.launcher_context_is_active()
-        
+
         if launcher_active:
             # Toggle fullscreen for the launcher window itself
             if self.isFullScreen():
@@ -7188,10 +7082,10 @@ class LauncherWindow(QMainWindow):
                 logging.info("Entering fullscreen for launcher")
                 self.showFullScreen()
             return
-        
+
         # Try to toggle fullscreen for the active window using xdotool
         xdotool, active_window = self.active_system_window()
-        
+
         if xdotool and active_window:
             # Don't toggle the launcher window
             if active_window in self.launcher_window_ids():
@@ -7201,12 +7095,12 @@ class LauncherWindow(QMainWindow):
                 else:
                     self.showFullScreen()
                 return
-            
+
             logging.info("Toggling fullscreen for active window %s", active_window)
             try:
                 # Check if the active window is a browser
                 is_browser = self._is_browser_window(xdotool, active_window)
-                
+
                 if is_browser:
                     # Browsers use 'f' key for fullscreen toggle
                     logging.info("Browser detected, sending 'f' key for fullscreen toggle")
@@ -7218,7 +7112,7 @@ class LauncherWindow(QMainWindow):
                 logging.exception("Failed to toggle fullscreen: %s", e)
         else:
             logging.warning("No active window found for fullscreen toggle")
-    
+
     def _is_browser_window(self, xdotool, window_id):
         """Check if the active window is a browser."""
         try:
@@ -7230,10 +7124,10 @@ class LauncherWindow(QMainWindow):
                 check=False,
                 timeout=2
             ).stdout.strip().lower()
-            
+
             # Check if it's a browser window
             is_browser = any(browser in window_class for browser in ['brave', 'chrome', 'chromium', 'firefox'])
-            
+
             return is_browser
         except Exception as e:
             logging.debug("Failed to detect browser window: %s", e)
@@ -7396,35 +7290,35 @@ class LauncherWindow(QMainWindow):
         """Update the IP label with current network info and time."""
         if not hasattr(self, 'ip_label'):
             return
-        
+
         # Get current time (this updates every second)
         current_time = time.strftime("%H:%M:%S")
-        
+
         # Check if we need to refresh WiFi info (only every 30 seconds)
         current_timestamp = time.time()
         if not hasattr(self, '_last_wifi_check'):
             self._last_wifi_check = 0
-        
+
         # Refresh WiFi info if more than 30 seconds have passed
         if current_timestamp - self._last_wifi_check > 30:
             self._cached_ip_address = self.get_ip_address()
             self._cached_wifi_ssid = self.get_wifi_ssid()
             self._cached_is_wifi = self.is_wifi_connection()
             self._last_wifi_check = current_timestamp
-        
+
         # Use cached values
         ip_address = getattr(self, '_cached_ip_address', self.get_ip_address())
         wifi_ssid = getattr(self, '_cached_wifi_ssid', '')
         is_wifi = getattr(self, '_cached_is_wifi', False)
-        
+
         if is_wifi:
             if wifi_ssid:
-                ip_text = f"{wifi_ssid} • {ip_address} • {current_time}"
+                ip_text = f"WiFi: {wifi_ssid} • {ip_address} • {current_time}"
             else:
-                ip_text = f"{ip_address} • {current_time}"
+                ip_text = f"WiFi • {ip_address} • {current_time}"
         else:
-            ip_text = f"{ip_address} • {current_time}"
-        
+            ip_text = f"Ethernet • {ip_address} • {current_time}"
+
         self.ip_label.setText(ip_text)
 
     def navigate(self, direction: str):
@@ -7433,32 +7327,10 @@ class LauncherWindow(QMainWindow):
 
         if direction == "RIGHT":
             target_row = self.current_row
-            # Check if we're at the last column BEFORE moving
-            if self.current_col >= len(self.tile_rows[target_row]) - 1:
-                # At last column, try to wrap to next row
-                if target_row < len(self.tile_rows) - 1:
-                    target_row += 1
-                    target_col = 0
-                else:
-                    # No next row, stay at last column
-                    target_col = self.current_col
-            else:
-                # Not at last column, move right normally
-                target_col = self.current_col + 1
+            target_col = min(self.current_col + 1, len(self.tile_rows[target_row]) - 1)
         elif direction == "LEFT":
             target_row = self.current_row
-            # Check if we're at the first column BEFORE moving
-            if self.current_col <= 0:
-                # At first column, try to wrap to previous row
-                if target_row > 0:
-                    target_row -= 1
-                    target_col = len(self.tile_rows[target_row]) - 1
-                else:
-                    # No previous row, stay at first column
-                    target_col = 0
-            else:
-                # Not at first column, move left normally
-                target_col = self.current_col - 1
+            target_col = max(self.current_col - 1, 0)
         elif direction == "DOWN":
             target_row = min(self.current_row + 1, len(self.tile_rows) - 1)
             target_col = min(self.current_col, len(self.tile_rows[target_row]) - 1)
@@ -7487,7 +7359,7 @@ class LauncherWindow(QMainWindow):
             vertical_anim.setDuration(220)
             vertical_anim.setStartValue(outer_scrollbar.value())
             vertical_anim.setEndValue(target_y)
-            vertical_anim.setEasingCurve(QEasingCurve.OutCubic)
+            vertical_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
             vertical_anim.start()
             self._scroll_anim = vertical_anim
 
@@ -7500,7 +7372,7 @@ class LauncherWindow(QMainWindow):
             horizontal_anim.setDuration(180)
             horizontal_anim.setStartValue(row_scrollbar.value())
             horizontal_anim.setEndValue(target_x)
-            horizontal_anim.setEasingCurve(QEasingCurve.OutCubic)
+            horizontal_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
             horizontal_anim.start()
             self._row_scroll_anim = horizontal_anim
 
@@ -7556,11 +7428,7 @@ class LauncherWindow(QMainWindow):
             return
 
         logging.info("Launching %s: %s", item.get("name"), command)
-        
-        # Show loading overlay
-        self.show_loading_overlay(f"Launching {item.get('name', 'app')}...")
-        
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             # Drop out of the way so the launched app receives focus/input.
             self.hide()
@@ -7588,12 +7456,8 @@ class LauncherWindow(QMainWindow):
                 args=(self.active_process.pid,),
                 daemon=True,
             ).start()
-            
-            # Hide loading overlay after a short delay
-            QTimer.singleShot(2000, self.hide_loading_overlay)
         except Exception:
             logging.exception("App launch failed")
-            self.hide_loading_overlay()
             self.finish_active_process()
 
 
@@ -7603,7 +7467,7 @@ def main():
 
     config_path = resolve_config_path()
     logging.info("Using config from: %s", config_path)
-    
+
     # Log the actual file location of launcher.py for debugging
     logging.info("Launcher.py location: %s", Path(__file__).resolve())
     logging.info("Icon directory: %s", Path(__file__).parent / "icons")
