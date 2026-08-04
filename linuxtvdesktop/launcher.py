@@ -3,27 +3,24 @@
 import asyncio
 import base64
 import configparser
-from concurrent.futures import ThreadPoolExecutor
-from functools import lru_cache
 import hashlib
-import http.server
 import importlib
 import json
 import logging
 import os
 import queue
-import signal
-import shlex
 import secrets
+import shlex
 import shutil
-import socketserver
+import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
-import tempfile
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from pathlib import Path
-from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 try:
@@ -148,7 +145,11 @@ DEFAULT_CONFIG = {
         {"name": "VLC", "cmd": "vlc", "icon": "icons/vlc.png"},
     ],
     "web_apps": [
-        {"name": "YouTube", "url": "https://www.youtube.com", "icon": "icons/youtube.png"},
+        {
+            "name": "YouTube",
+            "url": "https://www.youtube.com",
+            "icon": "icons/youtube.png",
+        },
     ],
     "auth": {
         "username": "",
@@ -511,7 +512,9 @@ def resource_path(relpath: str) -> Path:
 
 
 def cache_dir() -> Path:
-    return Path(os.getenv("XDG_CACHE_HOME", "~/.cache")).expanduser() / "linuxtv" / "icons"
+    return (
+        Path(os.getenv("XDG_CACHE_HOME", "~/.cache")).expanduser() / "linuxtv" / "icons"
+    )
 
 
 def desktop_file_locations():
@@ -546,7 +549,9 @@ def normalized_icon_path(source_path: str, cache_key: str, size: int = 96):
 
     normalized_dir = cache_dir() / "normalized"
     normalized_dir.mkdir(parents=True, exist_ok=True)
-    target_path = normalized_dir / f"{hashlib.sha1(cache_key.encode('utf-8')).hexdigest()}.png"
+    target_path = (
+        normalized_dir / f"{hashlib.sha1(cache_key.encode('utf-8')).hexdigest()}.png"
+    )
     if target_path.exists():
         return str(target_path)
 
@@ -577,18 +582,17 @@ def create_white_icon(icon_path: str, size: int = 96):
 
     # Create a new pixmap with the same size
     white_pixmap = QPixmap(pixmap.size())
-    white_pixmap.fill(Qt.transparent)
+    white_pixmap.fill(QColor(0, 0, 0, 0))  # прозрачный
 
     # Paint the original pixmap in white
     painter = QPainter(white_pixmap)
-    painter.setCompositionMode(QPainter.CompositionMode_Source)
+    painter.setCompositionMode(QPainter.Source)
     painter.drawPixmap(0, 0, pixmap)
-    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
-    painter.fillRect(white_pixmap.rect(), Qt.white)
+    painter.setCompositionMode(QPainter.SourceIn)
+    painter.fillRect(white_pixmap.rect(), QColor("white"))
     painter.end()
 
     return QIcon(white_pixmap)
-
 
 @lru_cache(maxsize=256)
 def resolve_icon_name(icon_name: str):
@@ -646,13 +650,23 @@ def desktop_entry_for_command(command_text: str):
             exec_line = entry.get("Exec", "")
             if not exec_line:
                 continue
-            exec_parts = split_command(exec_line.replace("%u", "").replace("%U", "").replace("%f", "").replace("%F", ""))
+            exec_parts = split_command(
+                exec_line.replace("%u", "")
+                .replace("%U", "")
+                .replace("%f", "")
+                .replace("%F", "")
+            )
             if not exec_parts:
                 continue
             entry_exec = Path(exec_parts[0]).name
             if executable == entry_exec:
                 return entry
-            if len(parts) >= 3 and parts[0] == "flatpak" and parts[1] == "run" and parts[2] in exec_parts:
+            if (
+                len(parts) >= 3
+                and parts[0] == "flatpak"
+                and parts[1] == "run"
+                and parts[2] in exec_parts
+            ):
                 return entry
     return None
 
@@ -679,7 +693,9 @@ def resolve_native_icon(app):
     if entry:
         resolved = resolve_icon_name(entry.get("Icon", ""))
         if resolved:
-            return normalized_icon_path(resolved, f"native-entry:{app.get('cmd', '')}:{entry.get('Icon', '')}")
+            return normalized_icon_path(
+                resolved, f"native-entry:{app.get('cmd', '')}:{entry.get('Icon', '')}"
+            )
     return ""
 
 
@@ -738,7 +754,11 @@ def normalize_config(config):
     if isinstance(config, dict):
         # Deep merge nested dicts instead of shallow replace
         for key, value in config.items():
-            if key in normalized and isinstance(normalized[key], dict) and isinstance(value, dict):
+            if (
+                key in normalized
+                and isinstance(normalized[key], dict)
+                and isinstance(value, dict)
+            ):
                 # Merge nested dicts, preserving defaults
                 normalized[key] = {**normalized[key], **value}
             else:
@@ -748,10 +768,22 @@ def normalize_config(config):
     web_apps = normalized.get("web_apps")
     auth = normalized.get("auth")
     auto_launch = normalized.get("auto_launch")
-    normalized["native_apps"] = native_apps if isinstance(native_apps, list) else list(DEFAULT_CONFIG["native_apps"])
-    normalized["web_apps"] = web_apps if isinstance(web_apps, list) else list(DEFAULT_CONFIG["web_apps"])
-    normalized["auth"] = auth if isinstance(auth, dict) else dict(DEFAULT_CONFIG["auth"])
-    normalized["auto_launch"] = auto_launch if isinstance(auto_launch, dict) else dict(DEFAULT_CONFIG["auto_launch"])
+    normalized["native_apps"] = (
+        native_apps
+        if isinstance(native_apps, list)
+        else list(DEFAULT_CONFIG["native_apps"])
+    )
+    normalized["web_apps"] = (
+        web_apps if isinstance(web_apps, list) else list(DEFAULT_CONFIG["web_apps"])
+    )
+    normalized["auth"] = (
+        auth if isinstance(auth, dict) else dict(DEFAULT_CONFIG["auth"])
+    )
+    normalized["auto_launch"] = (
+        auto_launch
+        if isinstance(auto_launch, dict)
+        else dict(DEFAULT_CONFIG["auto_launch"])
+    )
     return normalized
 
 
@@ -761,17 +793,19 @@ def hash_remote_password(password: str, salt: str = None) -> tuple:
     if salt is None:
         salt = secrets.token_hex(16)
     password_hash = hashlib.pbkdf2_hmac(
-        'sha256',
-        password.encode('utf-8'),
-        salt.encode('utf-8'),
-        100000  # iterations
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        100000,  # iterations
     ).hex()
     return password_hash, salt
 
 
 def remote_auth_enabled(config) -> bool:
     auth = config.get("auth", {})
-    return bool(auth.get("username", "").strip() and auth.get("password_hash", "").strip())
+    return bool(
+        auth.get("username", "").strip() and auth.get("password_hash", "").strip()
+    )
 
 
 def verify_remote_credentials(config, username: str, password: str) -> bool:
@@ -789,7 +823,9 @@ def verify_remote_credentials(config, username: str, password: str) -> bool:
         return username.strip() == expected_user and computed_hash == expected_hash
 
     # Legacy fallback: old SHA-256 without salt (insecure, but allows migration)
-    logging.warning("Legacy password hash detected without salt. Please update password for better security.")
+    logging.warning(
+        "Legacy password hash detected without salt. Please update password for better security."
+    )
     legacy_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
     return username.strip() == expected_user and legacy_hash == expected_hash
 
@@ -799,17 +835,25 @@ def save_config(path: Path, config) -> None:
     if path.suffix.lower() in (".yml", ".yaml"):
         if yaml is None:
             raise RuntimeError("pyyaml is required to save YAML config")
-        path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=False), encoding="utf-8")
+        path.write_text(
+            yaml.safe_dump(config, sort_keys=False, allow_unicode=False),
+            encoding="utf-8",
+        )
     elif path.suffix.lower() == ".json":
         path.write_text(json.dumps(config, indent=2), encoding="utf-8")
     elif yaml is not None:
-        path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=False), encoding="utf-8")
+        path.write_text(
+            yaml.safe_dump(config, sort_keys=False, allow_unicode=False),
+            encoding="utf-8",
+        )
     else:
         path.write_text(json.dumps(config, indent=2), encoding="utf-8")
 
 
 def resolve_config_path() -> Path:
-    config_path = Path(os.getenv("LINUXTV_CONFIG", "~/.config/linuxtv/config.yaml")).expanduser()
+    config_path = Path(
+        os.getenv("LINUXTV_CONFIG", "~/.config/linuxtv/config.yaml")
+    ).expanduser()
     bundled_path = Path(__file__).parent / "config.yaml"
 
     if config_path.exists():
@@ -818,8 +862,12 @@ def resolve_config_path() -> Path:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     if bundled_path.exists():
         try:
-            config_path.write_text(bundled_path.read_text(encoding="utf-8"), encoding="utf-8")
-            logging.info("Seeded LinuxTV config at %s from %s", config_path, bundled_path)
+            config_path.write_text(
+                bundled_path.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            logging.info(
+                "Seeded LinuxTV config at %s from %s", config_path, bundled_path
+            )
         except Exception:
             logging.exception("Failed to seed LinuxTV config at %s", config_path)
 
@@ -827,7 +875,13 @@ def resolve_config_path() -> Path:
 
 
 def find_browser():
-    candidates = ["brave-browser", "chromium", "chromium-browser", "google-chrome", "firefox"]
+    candidates = [
+        "brave-browser",
+        "chromium",
+        "chromium-browser",
+        "google-chrome",
+        "firefox",
+    ]
     for exe in candidates:
         if shutil.which(exe):
             return exe
@@ -913,7 +967,7 @@ def get_current_volume():
             )
             if result.returncode == 0:
                 # Output format: "Volume: 0.50" or "Volume: 0.50 [MUTED]"
-                match = re.search(r'Volume:\s+([\d.]+)', result.stdout)
+                match = re.search(r"Volume:\s+([\d.]+)", result.stdout)
                 if match:
                     volume = float(match.group(1))
                     return int(volume * 100)
@@ -932,7 +986,7 @@ def get_current_volume():
             )
             if result.returncode == 0:
                 # Output format: "Volume: front-left: 32768 /  50% / -18.06 dB, ..."
-                match = re.search(r'(\d+)%', result.stdout)
+                match = re.search(r"(\d+)%", result.stdout)
                 if match:
                     return int(match.group(1))
         except Exception:
@@ -950,7 +1004,7 @@ def get_current_volume():
             )
             if result.returncode == 0:
                 # Output contains: "[50%]" or "[on]"/"[off]"
-                match = re.search(r'\[(\d+)%\]', result.stdout)
+                match = re.search(r"\[(\d+)%\]", result.stdout)
                 if match:
                     return int(match.group(1))
         except Exception:
@@ -1026,15 +1080,30 @@ def control_system_volume(action: str):
     amixer = shutil.which("amixer")
     if amixer:
         if action == "VOLUME_UP":
-            result = subprocess.run([amixer, "set", "Master", "5%+"], check=False, capture_output=True, text=True)
+            result = subprocess.run(
+                [amixer, "set", "Master", "5%+"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
             if result.returncode == 0:
                 return True
         elif action == "VOLUME_DOWN":
-            result = subprocess.run([amixer, "set", "Master", "5%-"], check=False, capture_output=True, text=True)
+            result = subprocess.run(
+                [amixer, "set", "Master", "5%-"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
             if result.returncode == 0:
                 return True
         elif action == "MUTE":
-            result = subprocess.run([amixer, "set", "Master", "toggle"], check=False, capture_output=True, text=True)
+            result = subprocess.run(
+                [amixer, "set", "Master", "toggle"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
             if result.returncode == 0:
                 return True
 
@@ -1115,7 +1184,13 @@ def control_system_brightness(action: str, level: int = None):
 
                 if display:
                     result = subprocess.run(
-                        [xrandr, "--output", display, "--brightness", str(new_brightness)],
+                        [
+                            xrandr,
+                            "--output",
+                            display,
+                            "--brightness",
+                            str(new_brightness),
+                        ],
                         check=False,
                         capture_output=True,
                         text=True,
@@ -1225,7 +1300,9 @@ def native_app_profile(command):
     return executable
 
 
-def enforce_native_fullscreen(command, pid: int, geometry, stop_event: threading.Event, attempts: int = 8):
+def enforce_native_fullscreen(
+    command, pid: int, geometry, stop_event: threading.Event, attempts: int = 8
+):
     if not command:
         return
 
@@ -1259,17 +1336,61 @@ def enforce_native_fullscreen(command, pid: int, geometry, stop_event: threading
                     check=False,
                 )
                 subprocess.run([wmctrl, "-i", "-a", window_id], check=False)
-                subprocess.run([wmctrl, "-i", "-r", window_id, "-b", "add,maximized_vert,maximized_horz"], check=False)
-                subprocess.run([wmctrl, "-i", "-r", window_id, "-b", "remove,maximized_vert,maximized_horz"], check=False)
-                subprocess.run([wmctrl, "-i", "-r", window_id, "-b", "add,fullscreen"], check=False)
+                subprocess.run(
+                    [
+                        wmctrl,
+                        "-i",
+                        "-r",
+                        window_id,
+                        "-b",
+                        "add,maximized_vert,maximized_horz",
+                    ],
+                    check=False,
+                )
+                subprocess.run(
+                    [
+                        wmctrl,
+                        "-i",
+                        "-r",
+                        window_id,
+                        "-b",
+                        "remove,maximized_vert,maximized_horz",
+                    ],
+                    check=False,
+                )
+                subprocess.run(
+                    [wmctrl, "-i", "-r", window_id, "-b", "add,fullscreen"], check=False
+                )
 
             if xdotool:
-                subprocess.run([xdotool, "windowmove", window_id, str(geometry.x()), str(geometry.y())], check=False)
-                subprocess.run([xdotool, "windowsize", window_id, str(target_width), str(target_height)], check=False)
+                subprocess.run(
+                    [
+                        xdotool,
+                        "windowmove",
+                        window_id,
+                        str(geometry.x()),
+                        str(geometry.y()),
+                    ],
+                    check=False,
+                )
+                subprocess.run(
+                    [
+                        xdotool,
+                        "windowsize",
+                        window_id,
+                        str(target_width),
+                        str(target_height),
+                    ],
+                    check=False,
+                )
 
             if preferred_f11 and xdotool and window_id not in f11_applied_windows:
-                subprocess.run([xdotool, "windowactivate", "--sync", window_id], check=False)
-                subprocess.run([xdotool, "key", "--window", window_id, "F11"], check=False)
+                subprocess.run(
+                    [xdotool, "windowactivate", "--sync", window_id], check=False
+                )
+                subprocess.run(
+                    [xdotool, "key", "--window", window_id, "F11"], check=False
+                )
                 f11_applied_windows.add(window_id)
 
 
@@ -1303,7 +1424,12 @@ def request_system_update():
 
     try:
         # Use a terminal emulator if available
-        terminal_emulators = ["gnome-terminal", "x-terminal-emulator", "xterm", "konsole"]
+        terminal_emulators = [
+            "gnome-terminal",
+            "x-terminal-emulator",
+            "xterm",
+            "konsole",
+        ]
         terminal = None
         for term in terminal_emulators:
             if shutil.which(term):
@@ -1323,15 +1449,32 @@ def request_system_update():
         if terminal:
             # Run in terminal so user can see progress
             if terminal == "gnome-terminal":
-                subprocess.Popen([terminal, "--", "bash", "-c", f"{update_command}; echo 'Update complete. Press Enter to close.'; read"])
+                subprocess.Popen(
+                    [
+                        terminal,
+                        "--",
+                        "bash",
+                        "-c",
+                        f"{update_command}; echo 'Update complete. Press Enter to close.'; read",
+                    ]
+                )
             else:
-                subprocess.Popen([terminal, "-e", f"bash -c '{update_command}; echo Update complete. Press Enter to close.; read'"])
+                subprocess.Popen(
+                    [
+                        terminal,
+                        "-e",
+                        f"bash -c '{update_command}; echo Update complete. Press Enter to close.; read'",
+                    ]
+                )
             logging.info("Triggered system update in terminal (user: %s)", current_user)
             return True, "System update started in terminal"
         else:
             # No terminal available, run silently
             subprocess.Popen(["bash", "-c", update_command])
-            logging.info("Triggered system update (no terminal available, user: %s)", current_user)
+            logging.info(
+                "Triggered system update (no terminal available, user: %s)",
+                current_user,
+            )
             return True, "System update started (check terminal for progress)"
     except Exception as e:
         logging.exception("Failed to trigger system update")
@@ -1372,35 +1515,62 @@ class InputDeviceGrabber(threading.Thread):
 
                     # Check if this looks like a remote control
                     # Remote controls usually have directional keys, OK/Enter, back, etc.
-                    has_directional = any(code in key_codes for code in [
-                        evdev.ecodes.KEY_UP, evdev.ecodes.KEY_DOWN,
-                        evdev.ecodes.KEY_LEFT, evdev.ecodes.KEY_RIGHT
-                    ])
-                    has_enter = evdev.ecodes.KEY_ENTER in key_codes or evdev.ecodes.KEY_KPENTER in key_codes
+                    has_directional = any(
+                        code in key_codes
+                        for code in [
+                            evdev.ecodes.KEY_UP,
+                            evdev.ecodes.KEY_DOWN,
+                            evdev.ecodes.KEY_LEFT,
+                            evdev.ecodes.KEY_RIGHT,
+                        ]
+                    )
+                    has_enter = (
+                        evdev.ecodes.KEY_ENTER in key_codes
+                        or evdev.ecodes.KEY_KPENTER in key_codes
+                    )
 
                     # Check if it's NOT a full keyboard (doesn't have letter keys)
-                    has_letters = any(code in key_codes for code in [
-                        evdev.ecodes.KEY_A, evdev.ecodes.KEY_B, evdev.ecodes.KEY_C,
-                        evdev.ecodes.KEY_Q, evdev.ecodes.KEY_W, evdev.ecodes.KEY_E
-                    ])
+                    has_letters = any(
+                        code in key_codes
+                        for code in [
+                            evdev.ecodes.KEY_A,
+                            evdev.ecodes.KEY_B,
+                            evdev.ecodes.KEY_C,
+                            evdev.ecodes.KEY_Q,
+                            evdev.ecodes.KEY_W,
+                            evdev.ecodes.KEY_E,
+                        ]
+                    )
 
                     # Grab if it looks like a remote (has directional + enter, but not full keyboard)
-                    if has_directional and (has_enter or len(key_codes) < 50) and not has_letters:
+                    if (
+                        has_directional
+                        and (has_enter or len(key_codes) < 50)
+                        and not has_letters
+                    ):
                         try:
                             device.grab()  # Grab exclusive access
                             self.devices.append(device)
-                            logging.info("Grabbed remote control device: %s (%s)", device.name, path)
+                            logging.info(
+                                "Grabbed remote control device: %s (%s)",
+                                device.name,
+                                path,
+                            )
                         except Exception as e:
                             logging.warning("Failed to grab device %s: %s", path, e)
                     elif has_directional and has_letters:
                         # It's a keyboard - don't grab it exclusively
-                        logging.debug("Skipping keyboard device: %s (%s)", device.name, path)
+                        logging.debug(
+                            "Skipping keyboard device: %s (%s)", device.name, path
+                        )
 
             except Exception as e:
                 logging.warning("Failed to check device %s: %s", path, e)
 
         if not self.devices:
-            logging.info("No remote control devices found to grab (this is OK if using keyboard)")
+            logging.info(
+                "No remote control devices found to grab (this is OK if using keyboard)"
+            )
             return False
 
         self.start()
@@ -1420,8 +1590,9 @@ class InputDeviceGrabber(threading.Thread):
     def run(self):
         """Main loop to read and process input events."""
         try:
-            import evdev
             from select import select
+
+            import evdev
         except ImportError:
             return
 
@@ -1461,22 +1632,22 @@ class InputDeviceGrabber(threading.Thread):
 
         # Map common remote control keys to actions
         action_map = {
-            'KEY_UP': 'UP',
-            'KEY_DOWN': 'DOWN',
-            'KEY_LEFT': 'LEFT',
-            'KEY_RIGHT': 'RIGHT',
-            'KEY_ENTER': 'SELECT',
-            'KEY_KPENTER': 'SELECT',
-            'KEY_SPACE': 'SELECT',
-            'KEY_BACKSPACE': 'BACK',
-            'KEY_ESC': 'BACK',
-            'KEY_HOME': 'HOME',
-            'KEY_MENU': 'MENU',
-            'KEY_INFO': 'INFO',
-            'KEY_PLAYPAUSE': 'PLAY_PAUSE',
-            'KEY_PLAY': 'PLAY_PAUSE',
-            'KEY_PAUSE': 'PLAY_PAUSE',
-            'KEY_TAB': 'TAB',
+            "KEY_UP": "UP",
+            "KEY_DOWN": "DOWN",
+            "KEY_LEFT": "LEFT",
+            "KEY_RIGHT": "RIGHT",
+            "KEY_ENTER": "SELECT",
+            "KEY_KPENTER": "SELECT",
+            "KEY_SPACE": "SELECT",
+            "KEY_BACKSPACE": "BACK",
+            "KEY_ESC": "BACK",
+            "KEY_HOME": "HOME",
+            "KEY_MENU": "MENU",
+            "KEY_INFO": "INFO",
+            "KEY_PLAYPAUSE": "PLAY_PAUSE",
+            "KEY_PLAY": "PLAY_PAUSE",
+            "KEY_PAUSE": "PLAY_PAUSE",
+            "KEY_TAB": "TAB",
         }
 
         action = action_map.get(key_name)
@@ -1509,11 +1680,9 @@ class WebSocketControlServer(threading.Thread):
         # If no authentication required, send apps list immediately
         if authenticated:
             apps_list = self.window.get_installed_apps()
-            await websocket.send(json.dumps({
-                "status": "ok",
-                "type": "apps_list",
-                "apps": apps_list
-            }))
+            await websocket.send(
+                json.dumps({"status": "ok", "type": "apps_list", "apps": apps_list})
+            )
 
         try:
             async for message in websocket:
@@ -1529,35 +1698,44 @@ class WebSocketControlServer(threading.Thread):
                     # Legacy authentication (kept for backward compatibility)
                     username = str(payload.get("username", ""))
                     password = str(payload.get("password", ""))
-                    if verify_remote_credentials(self.window.config, username, password):
+                    if verify_remote_credentials(
+                        self.window.config, username, password
+                    ):
                         authenticated = True
                         await websocket.send(json.dumps({"status": "auth_ok"}))
                         # Automatically send apps list after successful authentication
                         apps_list = self.window.get_installed_apps()
-                        await websocket.send(json.dumps({
-                            "status": "ok",
-                            "type": "apps_list",
-                            "apps": apps_list
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {"status": "ok", "type": "apps_list", "apps": apps_list}
+                            )
+                        )
                     else:
-                        await websocket.send(json.dumps({"status": "auth_error", "error": "invalid credentials"}))
+                        await websocket.send(
+                            json.dumps(
+                                {"status": "auth_error", "error": "invalid credentials"}
+                            )
+                        )
                     continue
 
                 if message_type == "auth_challenge":
                     # Send random nonce for challenge-response authentication
                     nonce = secrets.token_hex(16)
                     self._auth_nonces[websocket] = nonce
-                    await websocket.send(json.dumps({
-                        "type": "auth_challenge",
-                        "nonce": nonce
-                    }))
+                    await websocket.send(
+                        json.dumps({"type": "auth_challenge", "nonce": nonce})
+                    )
                     continue
 
                 if message_type == "auth_response":
                     # Verify challenge-response using SHA-256 of raw password
                     nonce = self._auth_nonces.get(websocket)
                     if not nonce:
-                        await websocket.send(json.dumps({"status": "auth_error", "error": "no challenge issued"}))
+                        await websocket.send(
+                            json.dumps(
+                                {"status": "auth_error", "error": "no challenge issued"}
+                            )
+                        )
                         continue
 
                     username = str(payload.get("username", ""))
@@ -1569,31 +1747,51 @@ class WebSocketControlServer(threading.Thread):
                     simple_hash = auth.get("password_simple_hash", "")
                     stored_username = auth.get("username", "")
 
-                    logging.info("Auth attempt: user=%s, has_simple_hash=%s", username, bool(simple_hash))
+                    logging.info(
+                        "Auth attempt: user=%s, has_simple_hash=%s",
+                        username,
+                        bool(simple_hash),
+                    )
 
                     # Client computes: SHA-256(SHA-256(raw_password):nonce)
                     # Server verifies using stored simple_hash (SHA-256 of raw password)
                     if simple_hash:
-                        expected = hashlib.sha256(f"{simple_hash}:{nonce}".encode()).hexdigest()
-                        logging.info("Challenge verification: nonce=%s, expected=%s, got=%s",
-                                   nonce[:8] + "...", expected[:16] + "...", response_hash[:16] + "...")
+                        expected = hashlib.sha256(
+                            f"{simple_hash}:{nonce}".encode()
+                        ).hexdigest()
+                        logging.info(
+                            "Challenge verification: nonce=%s, expected=%s, got=%s",
+                            nonce[:8] + "...",
+                            expected[:16] + "...",
+                            response_hash[:16] + "...",
+                        )
                     else:
                         # No simple hash stored (old config), challenge-response won't work
-                        logging.warning("No password_simple_hash in config, challenge-response disabled")
+                        logging.warning(
+                            "No password_simple_hash in config, challenge-response disabled"
+                        )
                         expected = None
 
-                    if username == stored_username and expected and response_hash == expected:
+                    if (
+                        username == stored_username
+                        and expected
+                        and response_hash == expected
+                    ):
                         authenticated = True
                         await websocket.send(json.dumps({"status": "auth_ok"}))
                         # Send apps list after successful authentication
                         apps_list = self.window.get_installed_apps()
-                        await websocket.send(json.dumps({
-                            "status": "ok",
-                            "type": "apps_list",
-                            "apps": apps_list
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {"status": "ok", "type": "apps_list", "apps": apps_list}
+                            )
+                        )
                     else:
-                        await websocket.send(json.dumps({"status": "auth_error", "error": "invalid credentials"}))
+                        await websocket.send(
+                            json.dumps(
+                                {"status": "auth_error", "error": "invalid credentials"}
+                            )
+                        )
 
                     # Clean up nonce
                     if websocket in self._auth_nonces:
@@ -1608,18 +1806,26 @@ class WebSocketControlServer(threading.Thread):
                     text = str(payload.get("text", ""))
                     if text:
                         self.window.queue_remote_event({"type": "text", "text": text})
-                        await websocket.send(json.dumps({"status": "ok", "type": "text"}))
+                        await websocket.send(
+                            json.dumps({"status": "ok", "type": "text"})
+                        )
                     else:
-                        await websocket.send(json.dumps({"status": "error", "error": "invalid text"}))
+                        await websocket.send(
+                            json.dumps({"status": "error", "error": "invalid text"})
+                        )
                     continue
 
                 if message_type == "key":
                     key = str(payload.get("key", "")).upper()
                     if key:
                         self.window.queue_remote_event({"type": "key", "key": key})
-                        await websocket.send(json.dumps({"status": "ok", "type": "key", "key": key}))
+                        await websocket.send(
+                            json.dumps({"status": "ok", "type": "key", "key": key})
+                        )
                     else:
-                        await websocket.send(json.dumps({"status": "error", "error": "invalid key"}))
+                        await websocket.send(
+                            json.dumps({"status": "error", "error": "invalid key"})
+                        )
                     continue
 
                 if message_type == "pointer":
@@ -1637,14 +1843,22 @@ class WebSocketControlServer(threading.Thread):
                                 {"type": "pointer", "event": "move", "dx": dx, "dy": dy}
                             )
                             await websocket.send(
-                                json.dumps({"status": "ok", "type": "pointer", "event": "move"})
+                                json.dumps(
+                                    {"status": "ok", "type": "pointer", "event": "move"}
+                                )
                             )
                         else:
-                            await websocket.send(json.dumps({"status": "error", "error": "invalid move"}))
+                            await websocket.send(
+                                json.dumps({"status": "error", "error": "invalid move"})
+                            )
                     elif event_type in ("tap", "click", "right_click"):
-                        self.window.queue_remote_event({"type": "pointer", "event": event_type})
+                        self.window.queue_remote_event(
+                            {"type": "pointer", "event": event_type}
+                        )
                         await websocket.send(
-                            json.dumps({"status": "ok", "type": "pointer", "event": event_type})
+                            json.dumps(
+                                {"status": "ok", "type": "pointer", "event": event_type}
+                            )
                         )
                     elif event_type == "scroll":
                         try:
@@ -1656,48 +1870,76 @@ class WebSocketControlServer(threading.Thread):
 
                         if dx or dy:
                             self.window.queue_remote_event(
-                                {"type": "pointer", "event": "scroll", "dx": dx, "dy": dy}
+                                {
+                                    "type": "pointer",
+                                    "event": "scroll",
+                                    "dx": dx,
+                                    "dy": dy,
+                                }
                             )
                             await websocket.send(
-                                json.dumps({"status": "ok", "type": "pointer", "event": "scroll"})
+                                json.dumps(
+                                    {
+                                        "status": "ok",
+                                        "type": "pointer",
+                                        "event": "scroll",
+                                    }
+                                )
                             )
                         else:
-                            await websocket.send(json.dumps({"status": "error", "error": "invalid scroll"}))
+                            await websocket.send(
+                                json.dumps(
+                                    {"status": "error", "error": "invalid scroll"}
+                                )
+                            )
                     else:
-                        await websocket.send(json.dumps({"status": "error", "error": "invalid pointer event"}))
+                        await websocket.send(
+                            json.dumps(
+                                {"status": "error", "error": "invalid pointer event"}
+                            )
+                        )
                     continue
 
                 # Handle app listing request
-                if message_type == "get_apps" or str(payload.get("action", "")).upper() == "GET_APPS":
+                if (
+                    message_type == "get_apps"
+                    or str(payload.get("action", "")).upper() == "GET_APPS"
+                ):
                     apps_list = self.window.get_installed_apps()
-                    await websocket.send(json.dumps({
-                        "status": "ok",
-                        "type": "apps_list",
-                        "apps": apps_list
-                    }))
+                    await websocket.send(
+                        json.dumps(
+                            {"status": "ok", "type": "apps_list", "apps": apps_list}
+                        )
+                    )
                     continue
 
                 # Handle Kodi Image request - fetch images with proper auth
                 if message_type == "get_kodi_image":
                     image_path = str(payload.get("path", ""))
                     if not image_path:
-                        await websocket.send(json.dumps({
-                            "status": "error",
-                            "type": "kodi_image",
-                            "message": "No image path provided"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "error",
+                                    "type": "kodi_image",
+                                    "message": "No image path provided",
+                                }
+                            )
+                        )
                         continue
 
                     try:
                         # Get Kodi config
-                        kodi_config = self.window.config.get('kodi', {})
-                        kodi_host = kodi_config.get('host', 'localhost')
-                        kodi_port = kodi_config.get('port', '8080')
-                        kodi_user = kodi_config.get('username', '')
-                        kodi_pass = kodi_config.get('password', '')
+                        kodi_config = self.window.config.get("kodi", {})
+                        kodi_host = kodi_config.get("host", "localhost")
+                        kodi_port = kodi_config.get("port", "8080")
+                        kodi_user = kodi_config.get("username", "")
+                        kodi_pass = kodi_config.get("password", "")
 
                         # Construct Kodi image URL
-                        kodi_image_url = f"http://{kodi_host}:{kodi_port}/image/{image_path}"
+                        kodi_image_url = (
+                            f"http://{kodi_host}:{kodi_port}/image/{image_path}"
+                        )
 
                         logging.info("Fetching Kodi image: %s", kodi_image_url)
 
@@ -1705,32 +1947,44 @@ class WebSocketControlServer(threading.Thread):
                         req = Request(kodi_image_url)
                         if kodi_user or kodi_pass:
                             auth_string = f"{kodi_user}:{kodi_pass}"
-                            auth_bytes = base64.b64encode(auth_string.encode('utf-8')).decode('utf-8')
-                            req.add_header('Authorization', f'Basic {auth_bytes}')
+                            auth_bytes = base64.b64encode(
+                                auth_string.encode("utf-8")
+                            ).decode("utf-8")
+                            req.add_header("Authorization", f"Basic {auth_bytes}")
 
                         # Fetch image from Kodi
                         with urlopen(req, timeout=10) as response:
                             image_data = response.read()
-                            content_type = response.headers.get('Content-Type', 'image/png')
+                            content_type = response.headers.get(
+                                "Content-Type", "image/png"
+                            )
 
                             # Convert to base64 to send via WebSocket
-                            image_b64 = base64.b64encode(image_data).decode('utf-8')
+                            image_b64 = base64.b64encode(image_data).decode("utf-8")
 
-                            await websocket.send(json.dumps({
-                                "status": "ok",
-                                "type": "kodi_image",
-                                "image": f"data:{content_type};base64,{image_b64}",
-                                "path": image_path
-                            }))
+                            await websocket.send(
+                                json.dumps(
+                                    {
+                                        "status": "ok",
+                                        "type": "kodi_image",
+                                        "image": f"data:{content_type};base64,{image_b64}",
+                                        "path": image_path,
+                                    }
+                                )
+                            )
                             logging.info("Successfully fetched Kodi image")
                     except Exception as e:
                         logging.error("Failed to fetch Kodi image: %s", e)
-                        await websocket.send(json.dumps({
-                            "status": "error",
-                            "type": "kodi_image",
-                            "message": f"Failed to fetch image: {str(e)}",
-                            "path": image_path
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "error",
+                                    "type": "kodi_image",
+                                    "message": f"Failed to fetch image: {e!s}",
+                                    "path": image_path,
+                                }
+                            )
+                        )
                     continue
 
                 # Handle add app request
@@ -1739,13 +1993,24 @@ class WebSocketControlServer(threading.Thread):
                     app_name = str(payload.get("name", "")).strip()
 
                     if not app_name:
-                        await websocket.send(json.dumps({"status": "error", "error": "app name required"}))
+                        await websocket.send(
+                            json.dumps(
+                                {"status": "error", "error": "app name required"}
+                            )
+                        )
                         continue
 
                     if app_kind == "native":
                         app_command = str(payload.get("command", "")).strip()
                         if not app_command:
-                            await websocket.send(json.dumps({"status": "error", "error": "command required for native app"}))
+                            await websocket.send(
+                                json.dumps(
+                                    {
+                                        "status": "error",
+                                        "error": "command required for native app",
+                                    }
+                                )
+                            )
                             continue
 
                         self.window.add_native_app(app_name, app_command)
@@ -1754,13 +2019,22 @@ class WebSocketControlServer(threading.Thread):
                     elif app_kind == "web":
                         app_url = str(payload.get("url", "")).strip()
                         if not app_url:
-                            await websocket.send(json.dumps({"status": "error", "error": "url required for web app"}))
+                            await websocket.send(
+                                json.dumps(
+                                    {
+                                        "status": "error",
+                                        "error": "url required for web app",
+                                    }
+                                )
+                            )
                             continue
 
                         self.window.add_web_app(app_name, app_url)
                         logging.info("Added web app: %s (%s)", app_name, app_url)
 
-                    await websocket.send(json.dumps({"status": "ok", "type": "app_added"}))
+                    await websocket.send(
+                        json.dumps({"status": "ok", "type": "app_added"})
+                    )
                     continue
 
                 # Handle remove app request
@@ -1768,17 +2042,23 @@ class WebSocketControlServer(threading.Thread):
                     app_id = str(payload.get("id", "")).strip()
 
                     if not app_id:
-                        await websocket.send(json.dumps({"status": "error", "error": "app id required"}))
+                        await websocket.send(
+                            json.dumps({"status": "error", "error": "app id required"})
+                        )
                         continue
 
                     self.window.remove_app_by_id(app_id)
                     logging.info("Removed app: %s", app_id)
 
-                    await websocket.send(json.dumps({
-                        "status": "ok",
-                        "type": "app_removed",
-                        "message": f"App removed successfully"
-                    }))
+                    await websocket.send(
+                        json.dumps(
+                            {
+                                "status": "ok",
+                                "type": "app_removed",
+                                "message": "App removed successfully",
+                            }
+                        )
+                    )
                     continue
 
                 # Handle app launch request
@@ -1787,27 +2067,41 @@ class WebSocketControlServer(threading.Thread):
                     app_id = action.replace("LAUNCH_APP:", "")
                     logging.info("Launching app from remote: %s", app_id)
                     self.window.launch_app_by_id(app_id)
-                    await websocket.send(json.dumps({"status": "ok", "action": "launch_app", "app_id": app_id}))
+                    await websocket.send(
+                        json.dumps(
+                            {"status": "ok", "action": "launch_app", "app_id": app_id}
+                        )
+                    )
                     continue
 
                 # Handle WiFi settings request
                 if message_type == "get_wifi":
                     try:
-                        networks, current_wifi, message = self.window.scan_wifi_networks()
-                        await websocket.send(json.dumps({
-                            "status": "ok",
-                            "type": "wifi_list",
-                            "networks": networks,
-                            "current_wifi": current_wifi,
-                            "message": message
-                        }))
+                        networks, current_wifi, message = (
+                            self.window.scan_wifi_networks()
+                        )
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "ok",
+                                    "type": "wifi_list",
+                                    "networks": networks,
+                                    "current_wifi": current_wifi,
+                                    "message": message,
+                                }
+                            )
+                        )
                     except Exception as exc:
                         logging.exception("Failed to scan WiFi from remote")
-                        await websocket.send(json.dumps({
-                            "status": "error",
-                            "type": "wifi_list",
-                            "message": f"Failed to scan WiFi: {exc}"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "error",
+                                    "type": "wifi_list",
+                                    "message": f"Failed to scan WiFi: {exc}",
+                                }
+                            )
+                        )
                     continue
 
                 # Handle WiFi connect request
@@ -1819,40 +2113,58 @@ class WebSocketControlServer(threading.Thread):
                         success, message, current_wifi = self.window.connect_to_wifi(
                             {"ssid": ssid, "security": security}, password
                         )
-                        await websocket.send(json.dumps({
-                            "status": "ok" if success else "error",
-                            "type": "wifi_connected",
-                            "success": success,
-                            "message": message,
-                            "current_wifi": current_wifi
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "ok" if success else "error",
+                                    "type": "wifi_connected",
+                                    "success": success,
+                                    "message": message,
+                                    "current_wifi": current_wifi,
+                                }
+                            )
+                        )
                     except Exception as exc:
                         logging.exception("Failed to connect WiFi from remote")
-                        await websocket.send(json.dumps({
-                            "status": "error",
-                            "type": "wifi_connected",
-                            "message": f"Failed to connect WiFi: {exc}"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "error",
+                                    "type": "wifi_connected",
+                                    "message": f"Failed to connect WiFi: {exc}",
+                                }
+                            )
+                        )
                     continue
 
                 # Handle Bluetooth settings request
                 if message_type == "get_bluetooth":
                     try:
-                        devices, current_bluetooth, message = self.window.scan_bluetooth_devices()
-                        await websocket.send(json.dumps({
-                            "status": "ok",
-                            "type": "bluetooth_list",
-                            "devices": devices,
-                            "current_bluetooth": current_bluetooth,
-                            "message": message
-                        }))
+                        devices, current_bluetooth, message = (
+                            self.window.scan_bluetooth_devices()
+                        )
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "ok",
+                                    "type": "bluetooth_list",
+                                    "devices": devices,
+                                    "current_bluetooth": current_bluetooth,
+                                    "message": message,
+                                }
+                            )
+                        )
                     except Exception as exc:
                         logging.exception("Failed to scan Bluetooth from remote")
-                        await websocket.send(json.dumps({
-                            "status": "error",
-                            "type": "bluetooth_list",
-                            "message": f"Failed to scan Bluetooth: {exc}"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "error",
+                                    "type": "bluetooth_list",
+                                    "message": f"Failed to scan Bluetooth: {exc}",
+                                }
+                            )
+                        )
                     continue
 
                 # Handle Bluetooth connect request
@@ -1860,43 +2172,61 @@ class WebSocketControlServer(threading.Thread):
                     mac = str(payload.get("mac", ""))
                     name = str(payload.get("name", ""))
                     try:
-                        success, message, current_bluetooth = self.window.connect_to_bluetooth(
-                            {"mac": mac, "name": name}
+                        success, message, current_bluetooth = (
+                            self.window.connect_to_bluetooth({"mac": mac, "name": name})
                         )
-                        await websocket.send(json.dumps({
-                            "status": "ok" if success else "error",
-                            "type": "bluetooth_connected",
-                            "success": success,
-                            "message": message,
-                            "current_bluetooth": current_bluetooth
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "ok" if success else "error",
+                                    "type": "bluetooth_connected",
+                                    "success": success,
+                                    "message": message,
+                                    "current_bluetooth": current_bluetooth,
+                                }
+                            )
+                        )
                     except Exception as exc:
                         logging.exception("Failed to connect Bluetooth from remote")
-                        await websocket.send(json.dumps({
-                            "status": "error",
-                            "type": "bluetooth_connected",
-                            "message": f"Failed to connect Bluetooth: {exc}"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "error",
+                                    "type": "bluetooth_connected",
+                                    "message": f"Failed to connect Bluetooth: {exc}",
+                                }
+                            )
+                        )
                     continue
 
                 # Handle Bluetooth remove request
                 if message_type == "remove_bluetooth":
                     mac = str(payload.get("mac", ""))
                     try:
-                        success, message = self.window.remove_bluetooth_device({"mac": mac})
-                        await websocket.send(json.dumps({
-                            "status": "ok" if success else "error",
-                            "type": "bluetooth_removed",
-                            "success": success,
-                            "message": message
-                        }))
+                        success, message = self.window.remove_bluetooth_device(
+                            {"mac": mac}
+                        )
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "ok" if success else "error",
+                                    "type": "bluetooth_removed",
+                                    "success": success,
+                                    "message": message,
+                                }
+                            )
+                        )
                     except Exception as exc:
                         logging.exception("Failed to remove Bluetooth from remote")
-                        await websocket.send(json.dumps({
-                            "status": "error",
-                            "type": "bluetooth_removed",
-                            "message": f"Failed to remove Bluetooth: {exc}"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "error",
+                                    "type": "bluetooth_removed",
+                                    "message": f"Failed to remove Bluetooth: {exc}",
+                                }
+                            )
+                        )
                     continue
 
                 # Handle Sound settings request
@@ -1904,21 +2234,33 @@ class WebSocketControlServer(threading.Thread):
                     try:
                         speakers = self.window.get_audio_sinks()
                         default_sink = self.window.get_default_audio_sink()
-                        message = f"Found {len(speakers)} audio device(s)" if speakers else "No audio devices found"
-                        await websocket.send(json.dumps({
-                            "status": "ok",
-                            "type": "sound_list",
-                            "speakers": speakers,
-                            "default_sink": default_sink,
-                            "message": message
-                        }))
+                        message = (
+                            f"Found {len(speakers)} audio device(s)"
+                            if speakers
+                            else "No audio devices found"
+                        )
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "ok",
+                                    "type": "sound_list",
+                                    "speakers": speakers,
+                                    "default_sink": default_sink,
+                                    "message": message,
+                                }
+                            )
+                        )
                     except Exception as exc:
                         logging.exception("Failed to get sound devices from remote")
-                        await websocket.send(json.dumps({
-                            "status": "error",
-                            "type": "sound_list",
-                            "message": f"Failed to get sound devices: {exc}"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "error",
+                                    "type": "sound_list",
+                                    "message": f"Failed to get sound devices: {exc}",
+                                }
+                            )
+                        )
                     continue
 
                 # Handle Sound default set request
@@ -1926,78 +2268,116 @@ class WebSocketControlServer(threading.Thread):
                     sink_name = str(payload.get("sink", ""))
                     try:
                         success = self.window.set_default_audio_sink(sink_name)
-                        await websocket.send(json.dumps({
-                            "status": "ok" if success else "error",
-                            "type": "sound_set",
-                            "success": success,
-                            "message": "Default audio device updated" if success else "Failed to set default audio device"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "ok" if success else "error",
+                                    "type": "sound_set",
+                                    "success": success,
+                                    "message": "Default audio device updated"
+                                    if success
+                                    else "Failed to set default audio device",
+                                }
+                            )
+                        )
                     except Exception as exc:
                         logging.exception("Failed to set sound device from remote")
-                        await websocket.send(json.dumps({
-                            "status": "error",
-                            "type": "sound_set",
-                            "message": f"Failed to set sound device: {exc}"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "error",
+                                    "type": "sound_set",
+                                    "message": f"Failed to set sound device: {exc}",
+                                }
+                            )
+                        )
                     continue
 
                 # Handle Volume get request
                 if message_type == "get_volume":
                     try:
                         current_volume = get_current_volume()
-                        await websocket.send(json.dumps({
-                            "status": "ok",
-                            "type": "volume_level",
-                            "volume": current_volume,
-                            "message": f"Current volume: {current_volume}%"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "ok",
+                                    "type": "volume_level",
+                                    "volume": current_volume,
+                                    "message": f"Current volume: {current_volume}%",
+                                }
+                            )
+                        )
                     except Exception as exc:
                         logging.exception("Failed to get volume from remote")
-                        await websocket.send(json.dumps({
-                            "status": "error",
-                            "type": "volume_level",
-                            "message": f"Failed to get volume: {exc}"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "error",
+                                    "type": "volume_level",
+                                    "message": f"Failed to get volume: {exc}",
+                                }
+                            )
+                        )
                     continue
 
                 # Handle Brightness get request
                 if message_type == "get_brightness":
                     try:
                         current_brightness = int(get_current_brightness() * 100)
-                        await websocket.send(json.dumps({
-                            "status": "ok",
-                            "type": "brightness_level",
-                            "brightness": current_brightness,
-                            "message": f"Current brightness: {current_brightness}%"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "ok",
+                                    "type": "brightness_level",
+                                    "brightness": current_brightness,
+                                    "message": f"Current brightness: {current_brightness}%",
+                                }
+                            )
+                        )
                     except Exception as exc:
                         logging.exception("Failed to get brightness from remote")
-                        await websocket.send(json.dumps({
-                            "status": "error",
-                            "type": "brightness_level",
-                            "message": f"Failed to get brightness: {exc}"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "error",
+                                    "type": "brightness_level",
+                                    "message": f"Failed to get brightness: {exc}",
+                                }
+                            )
+                        )
                     continue
 
                 # Handle Brightness set request
                 if message_type == "set_brightness":
                     brightness_level = int(payload.get("brightness", 50))
                     try:
-                        success = control_system_brightness("SET_BRIGHTNESS", brightness_level)
-                        await websocket.send(json.dumps({
-                            "status": "ok" if success else "error",
-                            "type": "brightness_set",
-                            "success": success,
-                            "brightness": brightness_level,
-                            "message": f"Brightness set to {brightness_level}%" if success else "Failed to set brightness"
-                        }))
+                        success = control_system_brightness(
+                            "SET_BRIGHTNESS", brightness_level
+                        )
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "ok" if success else "error",
+                                    "type": "brightness_set",
+                                    "success": success,
+                                    "brightness": brightness_level,
+                                    "message": f"Brightness set to {brightness_level}%"
+                                    if success
+                                    else "Failed to set brightness",
+                                }
+                            )
+                        )
                     except Exception as exc:
                         logging.exception("Failed to set brightness from remote")
-                        await websocket.send(json.dumps({
-                            "status": "error",
-                            "type": "brightness_set",
-                            "message": f"Failed to set brightness: {exc}"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "error",
+                                    "type": "brightness_set",
+                                    "message": f"Failed to set brightness: {exc}",
+                                }
+                            )
+                        )
                     continue
 
                 # Handle Add App request
@@ -2006,20 +2386,30 @@ class WebSocketControlServer(threading.Thread):
                     app_name = str(payload.get("name", ""))
                     app_kind = str(payload.get("kind", "native"))
                     try:
-                        success, message = self.window.add_app_from_remote(app_id, app_name, app_kind)
-                        await websocket.send(json.dumps({
-                            "status": "ok" if success else "error",
-                            "type": "app_added",
-                            "success": success,
-                            "message": message
-                        }))
+                        success, message = self.window.add_app_from_remote(
+                            app_id, app_name, app_kind
+                        )
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "ok" if success else "error",
+                                    "type": "app_added",
+                                    "success": success,
+                                    "message": message,
+                                }
+                            )
+                        )
                     except Exception as exc:
                         logging.exception("Failed to add app from remote")
-                        await websocket.send(json.dumps({
-                            "status": "error",
-                            "type": "app_added",
-                            "message": f"Failed to add app: {exc}"
-                        }))
+                        await websocket.send(
+                            json.dumps(
+                                {
+                                    "status": "error",
+                                    "type": "app_added",
+                                    "message": f"Failed to add app: {exc}",
+                                }
+                            )
+                        )
                     continue
 
                 action = action.upper()
@@ -2027,7 +2417,9 @@ class WebSocketControlServer(threading.Thread):
                     self.window.queue_remote_action(action)
                     await websocket.send(json.dumps({"status": "ok", "action": action}))
                 else:
-                    await websocket.send(json.dumps({"status": "error", "error": "invalid action"}))
+                    await websocket.send(
+                        json.dumps({"status": "error", "error": "invalid action"})
+                    )
         except Exception as exc:
             logging.warning("WebSocket client disconnected: %s", exc)
 
@@ -2036,13 +2428,11 @@ class WebSocketControlServer(threading.Thread):
             logging.error("websockets library not installed; remote control disabled")
             return
 
-        self.server = await websockets.serve(
-            self.handler,
-            self.host,
-            self.port
-        )
+        self.server = await websockets.serve(self.handler, self.host, self.port)
 
-        logging.info("WebSocket remote server started on ws://%s:%s", self.host, self.port)
+        logging.info(
+            "WebSocket remote server started on ws://%s:%s", self.host, self.port
+        )
         try:
             await self.server.wait_closed()
         except asyncio.CancelledError:
@@ -2065,7 +2455,9 @@ class WebSocketControlServer(threading.Thread):
                 self.loop.stop()
             pending = asyncio.all_tasks(self.loop)
             if pending:
-                self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                self.loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
             self.loop.close()
 
     def stop(self):
@@ -2074,7 +2466,9 @@ class WebSocketControlServer(threading.Thread):
             # Close the server first
             if self.server:
                 self.server.close()
-                self.loop.call_soon_threadsafe(lambda: self.loop.create_task(self.server.wait_closed()))
+                self.loop.call_soon_threadsafe(
+                    lambda: self.loop.create_task(self.server.wait_closed())
+                )
             # Then stop the loop
             self.loop.call_soon_threadsafe(self.loop.stop)
 
@@ -2083,7 +2477,15 @@ class TileButton(QPushButton):
     SHELL_PADDING_X = 16
     SHELL_PADDING_Y = 16
 
-    def __init__(self, name: str, icon_path: str, tooltip: str = "", variant: str = "default", subtitle: str = "", metrics=None):
+    def __init__(
+        self,
+        name: str,
+        icon_path: str,
+        tooltip: str = "",
+        variant: str = "default",
+        subtitle: str = "",
+        metrics=None,
+    ):
         # Show only app name, not subtitle
         button_text = name
         super().__init__(button_text)
@@ -2107,7 +2509,9 @@ class TileButton(QPushButton):
             self.base_size.width(),
             self.base_size.height(),
         )
-        self._focus_rect = QRect(0, 0, self.shell_size.width(), self.shell_size.height())
+        self._focus_rect = QRect(
+            0, 0, self.shell_size.width(), self.shell_size.height()
+        )
         self._anim = QPropertyAnimation(self, b"geometry", self)
         self._anim.setDuration(300)
         self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -2183,17 +2587,17 @@ class TileButton(QPushButton):
         # Draw ripple if animating
         if self.ripple_pos and self.ripple_opacity > 0:
             painter = QPainter(self)
-            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
             ripple_color = QColor(255, 255, 255, int(self.ripple_opacity * 255))
             painter.setBrush(ripple_color)
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
 
             ripple_rect = QRect(
                 int(self.ripple_pos.x() - self.ripple_radius),
                 int(self.ripple_pos.y() - self.ripple_radius),
                 int(self.ripple_radius * 2),
-                int(self.ripple_radius * 2)
+                int(self.ripple_radius * 2),
             )
             painter.drawEllipse(ripple_rect)
             painter.end()
@@ -2239,6 +2643,7 @@ class TileButton(QPushButton):
 
 class DropRowWidget(QWidget):
     """Custom widget container for app cards - does not handle drops"""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         # Do not accept drops - let children handle them
@@ -2248,7 +2653,18 @@ class DropRowWidget(QWidget):
 class AppCard(QWidget):
     _drag_source = None  # Class variable to track current drag source
 
-    def __init__(self, tile_button: TileButton, edit_callback=None, delete_callback=None, favorite_callback=None, reorder_callback=None, show_actions: bool = True, metrics=None, app_data=None, kind=None):
+    def __init__(
+        self,
+        tile_button: TileButton,
+        edit_callback=None,
+        delete_callback=None,
+        favorite_callback=None,
+        reorder_callback=None,
+        show_actions: bool = True,
+        metrics=None,
+        app_data=None,
+        kind=None,
+    ):
         super().__init__()
         metrics = metrics or {}
         action_button_size = int(metrics.get("action_button_size", 44))
@@ -2313,28 +2729,29 @@ class AppCard(QWidget):
         # Install event filter on tile_button to intercept mouse events for drag
         self.tile_button.installEventFilter(self)
 
-    def eventFilter(self, watched, event):
-        """Intercept mouse events from tile_button for drag handling"""
-        if watched == self.tile_button:
-            if event.type() == QEvent.Type.MouseButtonPress:
-                # Map coordinates from tile_button to app_card
-                mapped_event = self._map_mouse_event(event)
-                self.mousePressEvent(mapped_event)
+        def eventFilter(self, watched, event):
+            """Intercept mouse events from tile_button for drag handling"""
+            if watched == self.tile_button:
+                if event.type() == QEvent.Type.MouseButtonPress:
+                    # Map coordinates from tile_button to app_card
+                    mapped_event = self._map_mouse_event(event)
+                    self.mousePressEvent(mapped_event)
                 # Don't return True - let the button also handle it
-            elif event.type() == QEvent.Type.MouseMove:
-                # Map coordinates from tile_button to app_card
-                mapped_event = self._map_mouse_event(event)
-                self.mouseMoveEvent(mapped_event)
+                elif event.type() == QEvent.Type.MouseMove:
+                    # Map coordinates from tile_button to app_card
+                    mapped_event = self._map_mouse_event(event)
+                    self.mouseMoveEvent(mapped_event)
                 # If we're dragging, don't pass to button
                 if self._is_dragging:
                     return True
-            elif event.type() == QEvent.Type.MouseButtonRelease:
-                # Map coordinates from tile_button to app_card
-                mapped_event = self._map_mouse_event(event)
-                self.mouseReleaseEvent(mapped_event)
-                if self._is_dragging:
-                    return True
-        return super().eventFilter(watched, event)
+                elif event.type() == QEvent.Type.MouseButtonRelease:
+                    # Map coordinates from tile_button to app_card
+                    mapped_event = self._map_mouse_event(event)
+                    self.mouseReleaseEvent(mapped_event)
+                    if self._is_dragging:
+                        return True
+                        return super().eventFilter(watched, event)
+
 
 def _map_mouse_event(self, event):
     """Map mouse event coordinates from tile_button to app_card"""
@@ -2352,7 +2769,7 @@ def _map_mouse_event(self, event):
         event.globalPos(),
         event.button(),
         event.buttons(),
-        event.modifiers()
+        event.modifiers(),
     )
 
     def sizeHint(self):
@@ -2363,7 +2780,11 @@ def _map_mouse_event(self, event):
 
     def resizeEvent(self, event):
         self.tile_button.update_geometry_targets(self.rect())
-        if self.favorite_button is not None and self.edit_button is not None and self.delete_button is not None:
+        if (
+            self.favorite_button is not None
+            and self.edit_button is not None
+            and self.delete_button is not None
+        ):
             # Align all buttons horizontally at the top right
             button_y = 12
             button_spacing = 6
@@ -2374,8 +2795,18 @@ def _map_mouse_event(self, event):
 
             # Position from right to left: delete, edit, favorite
             self.delete_button.move(self.width() - button_width - 12, button_y)
-            self.edit_button.move(self.width() - button_width - button_width - 12 - button_spacing, button_y)
-            self.favorite_button.move(self.width() - 2*button_width - button_width - 12 - 2*button_spacing, button_y)
+            self.edit_button.move(
+                self.width() - button_width - button_width - 12 - button_spacing,
+                button_y,
+            )
+            self.favorite_button.move(
+                self.width()
+                - 2 * button_width
+                - button_width
+                - 12
+                - 2 * button_spacing,
+                button_y,
+            )
         super().resizeEvent(event)
 
     def mousePressEvent(self, event):
@@ -2400,7 +2831,9 @@ def _map_mouse_event(self, event):
             return
 
         # Check if mouse has moved far enough to start drag
-        if (event.pos() - self._drag_start_pos).manhattanLength() < QApplication.startDragDistance():
+        if (
+            event.pos() - self._drag_start_pos
+        ).manhattanLength() < QApplication.startDragDistance():
             return
 
         # Don't start drag if clicking on buttons
@@ -2418,6 +2851,7 @@ def _map_mouse_event(self, event):
         mime_data = QMimeData()
         # Store app info as JSON for reliable transfer
         import json
+
         app_info = {
             "app_id": self.get_app_id(),
             "kind": self.kind,
@@ -2453,6 +2887,7 @@ def _map_mouse_event(self, event):
         if event.mimeData().hasText():
             try:
                 import json
+
                 data = json.loads(event.mimeData().text())
                 if "app_id" in data and "kind" in data:
                     event.accept()
@@ -2464,6 +2899,7 @@ def _map_mouse_event(self, event):
         if event.mimeData().hasText():
             try:
                 import json
+
                 data = json.loads(event.mimeData().text())
                 if "app_id" in data and "kind" in data:
                     event.accept()
@@ -2474,6 +2910,7 @@ def _map_mouse_event(self, event):
         """Handle drop - trigger reorder"""
         import json
         import logging
+
         try:
             data = json.loads(event.mimeData().text())
             logging.info(f"Drop event received: {data}")
@@ -2492,7 +2929,7 @@ def _map_mouse_event(self, event):
                 # Notify parent to handle reorder - look up the parent chain
                 parent = self.parentWidget()
                 while parent:
-                    if hasattr(parent, 'handle_card_drop'):
+                    if hasattr(parent, "handle_card_drop"):
                         parent.handle_card_drop(data, self.app_data, self.kind)
                         break
                     parent = parent.parentWidget()
@@ -2505,7 +2942,7 @@ def _map_mouse_event(self, event):
     def enterEvent(self, event):
         """Enhance shadow on hover"""
         try:
-            if hasattr(self, 'shadow_effect') and self.shadow_effect is not None:
+            if hasattr(self, "shadow_effect") and self.shadow_effect is not None:
                 self.shadow_effect.setBlurRadius(self.shadow_effect.blurRadius() + 4)
                 self.shadow_effect.setYOffset(6)
                 self.shadow_effect.setColor(QColor(0, 0, 0, 100))
@@ -2517,13 +2954,13 @@ def _map_mouse_event(self, event):
     def leaveEvent(self, event):
         """Restore normal shadow on leave"""
         try:
-            if hasattr(self, 'shadow_effect') and self.shadow_effect is not None:
+            if hasattr(self, "shadow_effect") and self.shadow_effect is not None:
                 # Safely traverse parent chain to get ui_metrics
                 metrics = {}
                 parent = self.tile_button.parent()
-                if parent and hasattr(parent, 'parent'):
+                if parent and hasattr(parent, "parent"):
                     grandparent = parent.parent()
-                    if grandparent and hasattr(grandparent, 'ui_metrics'):
+                    if grandparent and hasattr(grandparent, "ui_metrics"):
                         metrics = grandparent.ui_metrics
 
                 shadow_radius = metrics.get("card_shadow_radius", 10)
@@ -2538,6 +2975,7 @@ def _map_mouse_event(self, event):
 
 class ParallaxBackground(QWidget):
     """Custom widget with animated parallax gradient background"""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.scroll_position = 0
@@ -2550,7 +2988,7 @@ class ParallaxBackground(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # Create animated gradient based on scroll position
         gradient = QLinearGradient(0, 0, 0, self.height())
@@ -2572,7 +3010,15 @@ class IconUpdateBridge(QObject):
 
 
 class AddItemDialog(QDialog):
-    def __init__(self, parent=None, title_text="Add To Apps", type_text="Application", name_text="", value_text="", allow_type_change=True):
+    def __init__(
+        self,
+        parent=None,
+        title_text="Add To Apps",
+        type_text="Application",
+        name_text="",
+        value_text="",
+        allow_type_change=True,
+    ):
         super().__init__(parent)
         metrics = dialog_metrics()
         self.setWindowTitle(title_text)
@@ -2580,7 +3026,12 @@ class AddItemDialog(QDialog):
         self.setFixedWidth(metrics["add_width"])
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(metrics["dialog_margin_x"], metrics["dialog_margin_y"], metrics["dialog_margin_x"], metrics["dialog_margin_y"])
+        layout.setContentsMargins(
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+        )
         layout.setSpacing(14)
 
         title = QLabel("Add Launcher")
@@ -2588,7 +3039,9 @@ class AddItemDialog(QDialog):
         title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold))
         layout.addWidget(title)
 
-        subtitle = QLabel("Create a launcher for an installed app command or a website.")
+        subtitle = QLabel(
+            "Create a launcher for an installed app command or a website."
+        )
         subtitle.setObjectName("dialogSubtitle")
         subtitle.setWordWrap(True)
         subtitle.setFont(QFont("Sans Serif", metrics["subtitle_font"]))
@@ -2621,7 +3074,9 @@ class AddItemDialog(QDialog):
         self.value_input.setPlaceholderText("flatpak run com.spotify.Client")
         layout.addWidget(self.value_input)
 
-        self.helper_label = QLabel("Tip: Flatpak apps work too, for example `flatpak run com.spotify.Client`.")
+        self.helper_label = QLabel(
+            "Tip: Flatpak apps work too, for example `flatpak run com.spotify.Client`."
+        )
         self.helper_label.setObjectName("dialogHelper")
         self.helper_label.setWordWrap(True)
         layout.addWidget(self.helper_label)
@@ -2654,11 +3109,15 @@ class AddItemDialog(QDialog):
         if mode_text == "Website":
             self.value_label.setText("Website URL")
             self.value_input.setPlaceholderText("https://www.youtube.com")
-            self.helper_label.setText("Add a full URL or just a domain. LinuxTV will normalize it to HTTPS.")
+            self.helper_label.setText(
+                "Add a full URL or just a domain. LinuxTV will normalize it to HTTPS."
+            )
         else:
             self.value_label.setText("Launch command")
             self.value_input.setPlaceholderText("flatpak run com.spotify.Client")
-            self.helper_label.setText("Tip: Flatpak apps work too, for example `flatpak run com.spotify.Client`.")
+            self.helper_label.setText(
+                "Tip: Flatpak apps work too, for example `flatpak run com.spotify.Client`."
+            )
 
     def values(self):
         return {
@@ -2669,7 +3128,9 @@ class AddItemDialog(QDialog):
 
 
 class ConfirmDialog(QDialog):
-    def __init__(self, parent=None, title_text="Confirm Delete", body_text="Delete this app?"):
+    def __init__(
+        self, parent=None, title_text="Confirm Delete", body_text="Delete this app?"
+    ):
         super().__init__(parent)
         metrics = dialog_metrics()
         self.setWindowTitle(title_text)
@@ -2677,7 +3138,12 @@ class ConfirmDialog(QDialog):
         self.setFixedWidth(metrics["confirm_width"])
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(metrics["dialog_margin_x"], metrics["dialog_margin_y"], metrics["dialog_margin_x"], metrics["dialog_margin_y"])
+        layout.setContentsMargins(
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+        )
         layout.setSpacing(14)
 
         title = QLabel("Confirm")
@@ -2738,15 +3204,24 @@ class NetworkDialog(QDialog):
         self.wifi_scan_finished.connect(self.handle_wifi_scan_finished)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(metrics["dialog_margin_x"], metrics["dialog_margin_y"], metrics["dialog_margin_x"], metrics["dialog_margin_y"])
+        layout.setContentsMargins(
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+        )
         layout.setSpacing(12)
 
         wifi_title = QLabel("Wi-Fi")
         wifi_title.setObjectName("dialogSection")
-        wifi_title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold))
+        wifi_title.setFont(
+            QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold)
+        )
         layout.addWidget(wifi_title)
 
-        wifi_subtitle = QLabel("Scan for nearby networks, enter a password if needed, and connect without leaving LinuxTV.")
+        wifi_subtitle = QLabel(
+            "Scan for nearby networks, enter a password if needed, and connect without leaving LinuxTV."
+        )
         wifi_subtitle.setObjectName("dialogSubtitle")
         wifi_subtitle.setWordWrap(True)
         wifi_subtitle.setFont(QFont("Sans Serif", metrics["subtitle_font"]))
@@ -2756,12 +3231,14 @@ class NetworkDialog(QDialog):
         self.wifi_combo.setEditable(True)
         self.wifi_combo.setMinimumHeight(metrics["input_min_height"])
         self._style_settings_combo_popup(self.wifi_combo)
-        self.wifi_combo.lineEdit().setPlaceholderText("Select or type a Wi-Fi network name")
+        self.wifi_combo.lineEdit().setPlaceholderText(
+            "Select or type a Wi-Fi network name"
+        )
         layout.addWidget(self.wifi_combo)
 
         self.wifi_password_input = QLineEdit()
         self.wifi_password_input.setPlaceholderText("Wi-Fi password")
-        self.wifi_password_input.setEchoMode(QLineEdit.Password)
+        self.wifi_password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.wifi_password_input.setMinimumHeight(metrics["input_min_height"])
         layout.addWidget(self.wifi_password_input)
 
@@ -2820,25 +3297,40 @@ class NetworkDialog(QDialog):
 
     def set_wifi_loading_state(self, loading: bool, message=""):
         self._wifi_scan_in_progress = loading
-        self.refresh_wifi_button.setEnabled(not loading and bool(self.wifi_refresh_callback))
-        self.connect_wifi_button.setEnabled(not loading and bool(self.wifi_connect_callback))
-        self.forget_wifi_button.setEnabled(not loading and bool(self.wifi_remove_callback))
+        self.refresh_wifi_button.setEnabled(
+            not loading and bool(self.wifi_refresh_callback)
+        )
+        self.connect_wifi_button.setEnabled(
+            not loading and bool(self.wifi_connect_callback)
+        )
+        self.forget_wifi_button.setEnabled(
+            not loading and bool(self.wifi_remove_callback)
+        )
         if loading and message:
             self.wifi_status_label.setText(message)
 
     def ensure_wifi_networks_loaded(self, force=False):
         if not self.wifi_refresh_callback:
             self.set_wifi_loading_state(False)
-            self.wifi_status_label.setText("Wi-Fi scanning is not available on this system.")
+            self.wifi_status_label.setText(
+                "Wi-Fi scanning is not available on this system."
+            )
             return
         if self._wifi_scan_in_progress:
             return
         # Check if cache is still valid (2 minutes)
         import time
-        cache_valid = self._wifi_has_loaded and (time.time() - self._wifi_last_scan_time < 120)
+
+        cache_valid = self._wifi_has_loaded and (
+            time.time() - self._wifi_last_scan_time < 120
+        )
         if cache_valid and not force:
             return
-        status_text = "Refreshing Wi-Fi networks..." if force else "Fetching nearby Wi-Fi networks..."
+        status_text = (
+            "Refreshing Wi-Fi networks..."
+            if force
+            else "Fetching nearby Wi-Fi networks..."
+        )
         self.set_wifi_loading_state(True, status_text)
         threading.Thread(
             target=self._run_wifi_scan,
@@ -2851,13 +3343,18 @@ class NetworkDialog(QDialog):
             networks, current_wifi, message = self.wifi_refresh_callback()
         except Exception as exc:
             logging.exception("Failed to refresh Wi-Fi networks from settings")
-            networks, current_wifi, message = [], "", f"Could not scan for Wi-Fi networks: {exc}"
+            networks, current_wifi, message = (
+                [],
+                "",
+                f"Could not scan for Wi-Fi networks: {exc}",
+            )
         self.wifi_scan_finished.emit(networks, current_wifi, message)
 
     def handle_wifi_scan_finished(self, wifi_networks, current_wifi, message):
         self.set_wifi_loading_state(False)
         self._wifi_has_loaded = True
         import time
+
         self._wifi_last_scan_time = time.time()
         self.set_wifi_networks(wifi_networks or [], current_wifi)
         if message:
@@ -2891,23 +3388,34 @@ class NetworkDialog(QDialog):
             self.wifi_status_label.setText("Choose a network and connect from here.")
         else:
             self.wifi_combo.setEditText("")
-            self.wifi_status_label.setText("No Wi-Fi networks loaded yet. Open or refresh this section to scan.")
+            self.wifi_status_label.setText(
+                "No Wi-Fi networks loaded yet. Open or refresh this section to scan."
+            )
 
     def refresh_wifi_networks(self):
         self.ensure_wifi_networks_loaded(force=True)
 
     def connect_wifi(self):
         if self._wifi_scan_in_progress:
-            self.wifi_status_label.setText("Still fetching nearby Wi-Fi networks. Try again in a moment.")
+            self.wifi_status_label.setText(
+                "Still fetching nearby Wi-Fi networks. Try again in a moment."
+            )
             return
         if not self.wifi_connect_callback:
-            self.wifi_status_label.setText("Wi-Fi connection is not available on this system.")
+            self.wifi_status_label.setText(
+                "Wi-Fi connection is not available on this system."
+            )
             return
         selected_network = self.wifi_combo.currentData()
         if not isinstance(selected_network, dict):
-            selected_network = {"ssid": self.wifi_combo.currentText().strip(), "security": ""}
+            selected_network = {
+                "ssid": self.wifi_combo.currentText().strip(),
+                "security": "",
+            }
         password = self.wifi_password_input.text()
-        success, message, current_wifi = self.wifi_connect_callback(selected_network, password)
+        success, message, current_wifi = self.wifi_connect_callback(
+            selected_network, password
+        )
         if current_wifi:
             self.refresh_wifi_networks()
         self.wifi_status_label.setText(message)
@@ -2917,14 +3425,21 @@ class NetworkDialog(QDialog):
     def forget_wifi(self):
         # Forget/remove a Wi-Fi network.
         if self._wifi_scan_in_progress:
-            self.wifi_status_label.setText("Still fetching nearby Wi-Fi networks. Try again in a moment.")
+            self.wifi_status_label.setText(
+                "Still fetching nearby Wi-Fi networks. Try again in a moment."
+            )
             return
         if not self.wifi_remove_callback:
-            self.wifi_status_label.setText("Wi-Fi network removal is not available on this system.")
+            self.wifi_status_label.setText(
+                "Wi-Fi network removal is not available on this system."
+            )
             return
         selected_network = self.wifi_combo.currentData()
         if not isinstance(selected_network, dict):
-            selected_network = {"ssid": self.wifi_combo.currentText().strip(), "security": ""}
+            selected_network = {
+                "ssid": self.wifi_combo.currentText().strip(),
+                "security": "",
+            }
 
         ssid = selected_network.get("ssid", "").strip()
         if not ssid:
@@ -2965,15 +3480,24 @@ class BluetoothDialog(QDialog):
         self.bluetooth_scan_finished.connect(self.handle_bluetooth_scan_finished)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(metrics["dialog_margin_x"], metrics["dialog_margin_y"], metrics["dialog_margin_x"], metrics["dialog_margin_y"])
+        layout.setContentsMargins(
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+        )
         layout.setSpacing(12)
 
         bluetooth_title = QLabel("Bluetooth")
         bluetooth_title.setObjectName("dialogSection")
-        bluetooth_title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold))
+        bluetooth_title.setFont(
+            QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold)
+        )
         layout.addWidget(bluetooth_title)
 
-        bluetooth_subtitle = QLabel("Scan for nearby Bluetooth devices and connect without leaving LinuxTV.")
+        bluetooth_subtitle = QLabel(
+            "Scan for nearby Bluetooth devices and connect without leaving LinuxTV."
+        )
         bluetooth_subtitle.setObjectName("dialogSubtitle")
         bluetooth_subtitle.setWordWrap(True)
         bluetooth_subtitle.setFont(QFont("Sans Serif", metrics["subtitle_font"]))
@@ -2983,7 +3507,9 @@ class BluetoothDialog(QDialog):
         self.bluetooth_combo.setEditable(True)
         self.bluetooth_combo.setMinimumHeight(metrics["input_min_height"])
         self._style_settings_combo_popup(self.bluetooth_combo)
-        self.bluetooth_combo.lineEdit().setPlaceholderText("Select or type a Bluetooth device or MAC address")
+        self.bluetooth_combo.lineEdit().setPlaceholderText(
+            "Select or type a Bluetooth device or MAC address"
+        )
         layout.addWidget(self.bluetooth_combo)
 
         bluetooth_button_row = QHBoxLayout()
@@ -3041,25 +3567,40 @@ class BluetoothDialog(QDialog):
 
     def set_bluetooth_loading_state(self, loading: bool, message=""):
         self._bluetooth_scan_in_progress = loading
-        self.refresh_bluetooth_button.setEnabled(not loading and bool(self.bluetooth_refresh_callback))
-        self.connect_bluetooth_button.setEnabled(not loading and bool(self.bluetooth_connect_callback))
-        self.remove_bluetooth_button.setEnabled(not loading and bool(self.bluetooth_remove_callback))
+        self.refresh_bluetooth_button.setEnabled(
+            not loading and bool(self.bluetooth_refresh_callback)
+        )
+        self.connect_bluetooth_button.setEnabled(
+            not loading and bool(self.bluetooth_connect_callback)
+        )
+        self.remove_bluetooth_button.setEnabled(
+            not loading and bool(self.bluetooth_remove_callback)
+        )
         if loading and message:
             self.bluetooth_status_label.setText(message)
 
     def ensure_bluetooth_devices_loaded(self, force=False):
         if not self.bluetooth_refresh_callback:
             self.set_bluetooth_loading_state(False)
-            self.bluetooth_status_label.setText("Bluetooth scanning is not available on this system.")
+            self.bluetooth_status_label.setText(
+                "Bluetooth scanning is not available on this system."
+            )
             return
         if self._bluetooth_scan_in_progress:
             return
         # Check if cache is still valid (2 minutes)
         import time
-        cache_valid = self._bluetooth_has_loaded and (time.time() - self._bluetooth_last_scan_time < 120)
+
+        cache_valid = self._bluetooth_has_loaded and (
+            time.time() - self._bluetooth_last_scan_time < 120
+        )
         if cache_valid and not force:
             return
-        status_text = "Refreshing Bluetooth devices..." if force else "Fetching nearby Bluetooth devices..."
+        status_text = (
+            "Refreshing Bluetooth devices..."
+            if force
+            else "Fetching nearby Bluetooth devices..."
+        )
         self.set_bluetooth_loading_state(True, status_text)
         threading.Thread(
             target=self._run_bluetooth_scan,
@@ -3072,13 +3613,20 @@ class BluetoothDialog(QDialog):
             devices, current_bluetooth, message = self.bluetooth_refresh_callback()
         except Exception as exc:
             logging.exception("Failed to refresh Bluetooth devices from settings")
-            devices, current_bluetooth, message = [], "", f"Could not scan for Bluetooth devices: {exc}"
+            devices, current_bluetooth, message = (
+                [],
+                "",
+                f"Could not scan for Bluetooth devices: {exc}",
+            )
         self.bluetooth_scan_finished.emit(devices, current_bluetooth, message)
 
-    def handle_bluetooth_scan_finished(self, bluetooth_devices, current_bluetooth, message):
+    def handle_bluetooth_scan_finished(
+        self, bluetooth_devices, current_bluetooth, message
+    ):
         self.set_bluetooth_loading_state(False)
         self._bluetooth_has_loaded = True
         import time
+
         self._bluetooth_last_scan_time = time.time()
         self.set_bluetooth_devices(bluetooth_devices or [], current_bluetooth)
         if message:
@@ -3099,46 +3647,64 @@ class BluetoothDialog(QDialog):
 
         if selected_index >= 0:
             self.bluetooth_combo.setCurrentIndex(selected_index)
-            self.bluetooth_status_label.setText(f"Connected device: {current_bluetooth}")
+            self.bluetooth_status_label.setText(
+                f"Connected device: {current_bluetooth}"
+            )
             return
 
         if current_text:
             self.bluetooth_combo.setEditText(current_text)
         elif current_bluetooth:
             self.bluetooth_combo.setEditText(current_bluetooth)
-            self.bluetooth_status_label.setText(f"Connected device: {current_bluetooth}")
+            self.bluetooth_status_label.setText(
+                f"Connected device: {current_bluetooth}"
+            )
         elif bluetooth_devices:
             self.bluetooth_combo.setCurrentIndex(0)
-            self.bluetooth_status_label.setText("Choose a device and connect from here.")
+            self.bluetooth_status_label.setText(
+                "Choose a device and connect from here."
+            )
         else:
             self.bluetooth_combo.setEditText("")
-            self.bluetooth_status_label.setText("No Bluetooth devices loaded yet. Open or refresh this section to scan.")
+            self.bluetooth_status_label.setText(
+                "No Bluetooth devices loaded yet. Open or refresh this section to scan."
+            )
 
     def refresh_bluetooth_devices(self):
         self.ensure_bluetooth_devices_loaded(force=True)
 
     def connect_bluetooth(self):
         if self._bluetooth_scan_in_progress:
-            self.bluetooth_status_label.setText("Still fetching nearby Bluetooth devices. Try again in a moment.")
+            self.bluetooth_status_label.setText(
+                "Still fetching nearby Bluetooth devices. Try again in a moment."
+            )
             return
         if not self.bluetooth_connect_callback:
-            self.bluetooth_status_label.setText("Bluetooth connection is not available on this system.")
+            self.bluetooth_status_label.setText(
+                "Bluetooth connection is not available on this system."
+            )
             return
         selected_device = self.bluetooth_combo.currentData()
         if not isinstance(selected_device, dict):
             selected_device = {"mac": self.bluetooth_combo.currentText().strip()}
-        success, message, current_bluetooth = self.bluetooth_connect_callback(selected_device)
+        success, message, current_bluetooth = self.bluetooth_connect_callback(
+            selected_device
+        )
         if current_bluetooth:
-             self.refresh_bluetooth_devices()
+            self.refresh_bluetooth_devices()
         self.bluetooth_status_label.setText(message)
 
     def remove_bluetooth(self):
         """Remove/unpair a Bluetooth device."""
         if self._bluetooth_scan_in_progress:
-            self.bluetooth_status_label.setText("Still fetching nearby Bluetooth devices. Try again in a moment.")
+            self.bluetooth_status_label.setText(
+                "Still fetching nearby Bluetooth devices. Try again in a moment."
+            )
             return
         if not self.bluetooth_connect_callback:
-            self.bluetooth_status_label.setText("Bluetooth connection is not available on this system.")
+            self.bluetooth_status_label.setText(
+                "Bluetooth connection is not available on this system."
+            )
             return
         selected_device = self.bluetooth_combo.currentData()
         if not isinstance(selected_device, dict):
@@ -3150,7 +3716,10 @@ class BluetoothDialog(QDialog):
             return
 
         # Call the remove callback
-        if hasattr(self, 'bluetooth_remove_callback') and self.bluetooth_remove_callback:
+        if (
+            hasattr(self, "bluetooth_remove_callback")
+            and self.bluetooth_remove_callback
+        ):
             success, message = self.bluetooth_remove_callback(selected_device)
             if success:
                 self.refresh_bluetooth_devices()
@@ -3168,7 +3737,12 @@ class SoundDialog(QDialog):
         self.setFixedWidth(metrics["settings_width"])
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(metrics["dialog_margin_x"], metrics["dialog_margin_y"], metrics["dialog_margin_x"], metrics["dialog_margin_y"])
+        layout.setContentsMargins(
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+        )
         layout.setSpacing(14)
 
         title = QLabel("Audio Output")
@@ -3176,7 +3750,9 @@ class SoundDialog(QDialog):
         title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold))
         layout.addWidget(title)
 
-        subtitle = QLabel("Select the speaker or audio output device for playing sound.")
+        subtitle = QLabel(
+            "Select the speaker or audio output device for playing sound."
+        )
         subtitle.setObjectName("dialogSubtitle")
         subtitle.setWordWrap(True)
         subtitle.setFont(QFont("Sans Serif", metrics["subtitle_font"]))
@@ -3238,7 +3814,9 @@ class SoundDialog(QDialog):
         """Load available audio output devices"""
         pactl = shutil.which("pactl")
         if not pactl:
-            self.speaker_status_label.setText("PulseAudio is not available on this system.")
+            self.speaker_status_label.setText(
+                "PulseAudio is not available on this system."
+            )
             return
 
         try:
@@ -3247,7 +3825,7 @@ class SoundDialog(QDialog):
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=10
+                timeout=10,
             )
 
             self.speaker_combo.blockSignals(True)
@@ -3268,7 +3846,9 @@ class SoundDialog(QDialog):
                         sink_index += 1
 
                 if sink_index > 0:
-                    self.speaker_status_label.setText(f"Found {sink_index} audio output device(s).")
+                    self.speaker_status_label.setText(
+                        f"Found {sink_index} audio output device(s)."
+                    )
                 else:
                     self.speaker_status_label.setText("No audio output devices found.")
             else:
@@ -3292,7 +3872,7 @@ class SoundDialog(QDialog):
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=5
+                timeout=5,
             )
             if result.returncode == 0:
                 return result.stdout.strip()
@@ -3311,25 +3891,25 @@ class SoundDialog(QDialog):
                     capture_output=True,
                     text=True,
                     check=False,
-                    timeout=10
+                    timeout=10,
                 )
                 if result.returncode == 0:
                     # Parse the output to find description
-                    lines = result.stdout.split('\n')
+                    lines = result.stdout.split("\n")
                     in_sink = False
                     for line in lines:
-                        if sink_name in line and 'Name:' in line:
+                        if sink_name in line and "Name:" in line:
                             in_sink = True
-                        elif in_sink and 'Description:' in line:
-                            desc = line.split('Description:')[1].strip()
+                        elif in_sink and "Description:" in line:
+                            desc = line.split("Description:")[1].strip()
                             return desc
-                        elif in_sink and line.strip() == '':
+                        elif in_sink and line.strip() == "":
                             break
             except Exception:
                 pass
 
         # Fallback: use the sink name with better formatting
-        return sink_name.replace('_', ' ').replace('.', ' ')
+        return sink_name.replace("_", " ").replace(".", " ")
 
     def refresh_speakers(self):
         """Refresh the list of audio output devices"""
@@ -3340,16 +3920,21 @@ class SoundDialog(QDialog):
         """Set the selected speaker as default"""
         pactl = shutil.which("pactl")
         if not pactl:
-            self.speaker_status_label.setText("PulseAudio is not available on this system.")
+            self.speaker_status_label.setText(
+                "PulseAudio is not available on this system."
+            )
             return
 
         selected_sink = self.speaker_combo.currentData()
         if not selected_sink:
-            self.speaker_status_label.setText("Please select an audio output device first.")
+            self.speaker_status_label.setText(
+                "Please select an audio output device first."
+            )
             return
 
         try:
             import logging
+
             logging.info(f"Setting default audio sink to: {selected_sink}")
 
             result = subprocess.run(
@@ -3357,7 +3942,7 @@ class SoundDialog(QDialog):
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=10
+                timeout=10,
             )
 
             if result.returncode == 0:
@@ -3395,7 +3980,7 @@ class SoundDialog(QDialog):
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=10
+                timeout=10,
             )
 
             if result.returncode == 0 and result.stdout.strip():
@@ -3408,12 +3993,15 @@ class SoundDialog(QDialog):
                             capture_output=True,
                             text=True,
                             check=False,
-                            timeout=5
+                            timeout=5,
                         )
                         if move_result.returncode == 0:
                             moved_count += 1
                             import logging
-                            logging.info(f"Moved audio stream {input_id} to {sink_name}")
+
+                            logging.info(
+                                f"Moved audio stream {input_id} to {sink_name}"
+                            )
         except Exception:
             logging.exception("Failed to move sink inputs")
 
@@ -3429,7 +4017,12 @@ class BrightnessDialog(QDialog):
         self.setFixedWidth(metrics["settings_width"])
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(metrics["dialog_margin_x"], metrics["dialog_margin_y"], metrics["dialog_margin_x"], metrics["dialog_margin_y"])
+        layout.setContentsMargins(
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+        )
         layout.setSpacing(14)
 
         title = QLabel("Screen Brightness")
@@ -3450,7 +4043,9 @@ class BrightnessDialog(QDialog):
         if brightness_icon_path.exists():
             pixmap = QPixmap(str(brightness_icon_path))
             if not pixmap.isNull():
-                scaled_pixmap = pixmap.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                scaled_pixmap = pixmap.scaled(
+                    24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                )
                 brightness_icon_label.setPixmap(scaled_pixmap)
         brightness_icon_label.setFixedSize(24, 24)
         slider_row.addWidget(brightness_icon_label)
@@ -3465,7 +4060,9 @@ class BrightnessDialog(QDialog):
 
         self.brightness_value_label = QLabel(f"{self.brightness_slider.value()}%")
         self.brightness_value_label.setObjectName("dialogStatus")
-        self.brightness_value_label.setFont(QFont("Sans Serif", metrics["subtitle_font"], QFont.Weight.Bold))
+        self.brightness_value_label.setFont(
+            QFont("Sans Serif", metrics["subtitle_font"], QFont.Weight.Bold)
+        )
         self.brightness_value_label.setFixedWidth(50)
         self.brightness_value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         slider_row.addWidget(self.brightness_value_label)
@@ -3477,7 +4074,9 @@ class BrightnessDialog(QDialog):
             preset_button = QPushButton(f"{preset_value}%")
             preset_button.setProperty("tileVariant", "dialogSecondary")
             preset_button.setFixedHeight(36)
-            preset_button.clicked.connect(lambda checked, val=preset_value: self.set_brightness_preset(val))
+            preset_button.clicked.connect(
+                lambda checked, val=preset_value: self.set_brightness_preset(val)
+            )
             preset_row.addWidget(preset_button)
 
         layout.addLayout(preset_row)
@@ -3507,7 +4106,9 @@ class BrightnessDialog(QDialog):
         if success:
             self.brightness_status_label.setText(f"Brightness set to {value}%")
         else:
-            self.brightness_status_label.setText("Failed to adjust brightness. Try installing brightnessctl.")
+            self.brightness_status_label.setText(
+                "Failed to adjust brightness. Try installing brightnessctl."
+            )
 
     def set_brightness_preset(self, value):
         """Set brightness to a preset value"""
@@ -3527,7 +4128,12 @@ class RemoteLoginDialog(QDialog):
         self.setFixedWidth(metrics["settings_width"])
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(metrics["dialog_margin_x"], metrics["dialog_margin_y"], metrics["dialog_margin_x"], metrics["dialog_margin_y"])
+        layout.setContentsMargins(
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+        )
         layout.setSpacing(14)
 
         title = QLabel("Remote Login")
@@ -3535,7 +4141,9 @@ class RemoteLoginDialog(QDialog):
         title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold))
         layout.addWidget(title)
 
-        subtitle = QLabel("Set the phone credentials required to control LinuxTV remotely.")
+        subtitle = QLabel(
+            "Set the phone credentials required to control LinuxTV remotely."
+        )
         subtitle.setObjectName("dialogSubtitle")
         subtitle.setWordWrap(True)
         subtitle.setFont(QFont("Sans Serif", metrics["subtitle_font"]))
@@ -3549,13 +4157,13 @@ class RemoteLoginDialog(QDialog):
 
         self.password_input = QLineEdit()
         self.password_input.setPlaceholderText("Password")
-        self.password_input.setEchoMode(QLineEdit.Password)
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_input.setMinimumHeight(metrics["input_min_height"])
         layout.addWidget(self.password_input)
 
         self.confirm_input = QLineEdit()
         self.confirm_input.setPlaceholderText("Confirm password")
-        self.confirm_input.setEchoMode(QLineEdit.Password)
+        self.confirm_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.confirm_input.setMinimumHeight(metrics["input_min_height"])
         layout.addWidget(self.confirm_input)
 
@@ -3608,7 +4216,12 @@ class SettingsDialog(QDialog):
         app_options = app_options or []
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(metrics["dialog_margin_x"], metrics["dialog_margin_y"], metrics["dialog_margin_x"], metrics["dialog_margin_y"])
+        layout.setContentsMargins(
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+            metrics["dialog_margin_x"],
+            metrics["dialog_margin_y"],
+        )
         layout.setSpacing(14)
         self.section_buttons = {}
         self.section_panels = {}
@@ -3618,7 +4231,9 @@ class SettingsDialog(QDialog):
         title.setFont(QFont("Sans Serif", metrics["section_font"], QFont.Weight.Bold))
         layout.addWidget(title)
 
-        subtitle = QLabel("Choose which app or site opens automatically after LinuxTV sits idle.")
+        subtitle = QLabel(
+            "Choose which app or site opens automatically after LinuxTV sits idle."
+        )
         subtitle.setObjectName("dialogSubtitle")
         subtitle.setWordWrap(True)
         subtitle.setFont(QFont("Sans Serif", metrics["subtitle_font"]))
@@ -3632,7 +4247,9 @@ class SettingsDialog(QDialog):
         selected_target = str(auto_launch.get("app_target", "")).strip()
         selected_index = 0
         for index, option in enumerate(app_options, start=1):
-            self.auto_launch_combo.addItem(option["label"], (option["kind"], option["target"]))
+            self.auto_launch_combo.addItem(
+                option["label"], (option["kind"], option["target"])
+            )
             if option["kind"] == selected_kind and option["target"] == selected_target:
                 selected_index = index
         self.auto_launch_combo.setCurrentIndex(selected_index)
@@ -3640,11 +4257,15 @@ class SettingsDialog(QDialog):
 
         self.delay_input = QLineEdit()
         self.delay_input.setPlaceholderText("Idle delay in seconds")
-        self.delay_input.setText(str(auto_launch.get("delay_seconds", AUTO_LAUNCH_IDLE_MS // 1000)))
+        self.delay_input.setText(
+            str(auto_launch.get("delay_seconds", AUTO_LAUNCH_IDLE_MS // 1000))
+        )
         self.delay_input.setMinimumHeight(metrics["input_min_height"])
         layout.addWidget(self.delay_input)
 
-        auto_helper = QLabel("Pick Disabled to turn auto open off. Enter a whole number of seconds.")
+        auto_helper = QLabel(
+            "Pick Disabled to turn auto open off. Enter a whole number of seconds."
+        )
         auto_helper.setObjectName("dialogSubtitle")
         auto_helper.setWordWrap(True)
         auto_helper.setFont(QFont("Sans Serif", metrics["helper_font"]))
@@ -3720,7 +4341,9 @@ class LauncherWindow(QMainWindow):
         self.remote_target_window_cache = None
         self.remote_target_window_cache_at = 0.0
         self.remote_action_queue = queue.Queue()
-        self._icon_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="icon-loader")
+        self._icon_pool = ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix="icon-loader"
+        )
         self._icon_request_token = 0
         self._icon_bridge = IconUpdateBridge()
         self._icon_bridge.icon_ready.connect(self._apply_resolved_icon)
@@ -3760,7 +4383,7 @@ class LauncherWindow(QMainWindow):
                 "No HTTPS for WebSocket — the WebSocket server runs on plain ws:// (port %d), not wss://; "
                 "credentials traverse the local network unencrypted. "
                 "Set websocket.ssl_cert and websocket.ssl_key in config to enable WSS.",
-                ws_config.get("port", 8765)
+                ws_config.get("port", 8765),
             )
 
         self.ws_server = WebSocketControlServer(self)
@@ -3902,6 +4525,7 @@ class LauncherWindow(QMainWindow):
     def get_ip_address(self):
         """Get the local IP address of the machine"""
         import socket
+
         try:
             # Create a socket connection to get the local IP
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -3915,6 +4539,7 @@ class LauncherWindow(QMainWindow):
     def get_wifi_ssid(self):
         """Get the current WiFi SSID"""
         import subprocess
+
         try:
             nmcli = shutil.which("nmcli")
             if not nmcli:
@@ -3926,7 +4551,7 @@ class LauncherWindow(QMainWindow):
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=5
+                timeout=5,
             )
 
             if result.returncode == 0 and result.stdout:
@@ -3943,6 +4568,7 @@ class LauncherWindow(QMainWindow):
     def is_wifi_connection(self):
         """Check if current connection is via WiFi"""
         import subprocess
+
         try:
             nmcli = shutil.which("nmcli")
             if not nmcli:
@@ -3954,7 +4580,7 @@ class LauncherWindow(QMainWindow):
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=5
+                timeout=5,
             )
 
             is_wifi = False
@@ -4040,7 +4666,9 @@ class LauncherWindow(QMainWindow):
         # Left-aligned title
         title = QLabel("LinuxTV")
         title.setObjectName("heroTitle")
-        title.setFont(QFont("Sans Serif", self.ui_metrics["hero_title_font"], QFont.Weight.Bold))
+        title.setFont(
+            QFont("Sans Serif", self.ui_metrics["hero_title_font"], QFont.Weight.Bold)
+        )
         title.setAlignment(Qt.AlignmentFlag.AlignLeft)
         hero_top_row.addWidget(title)
 
@@ -4058,6 +4686,7 @@ class LauncherWindow(QMainWindow):
         self._last_wifi_check = time.time()
 
         import logging
+
         logging.info(f"IP: {ip_address}, WiFi SSID: '{wifi_ssid}', Is WiFi: {is_wifi}")
 
         if is_wifi:
@@ -4070,7 +4699,9 @@ class LauncherWindow(QMainWindow):
 
         self.ip_label = QLabel(ip_text)
         self.ip_label.setObjectName("ipLabel")
-        self.ip_label.setFont(QFont("Sans Serif", max(13, self.ui_metrics["settings_button_font"] - 5)))
+        self.ip_label.setFont(
+            QFont("Sans Serif", max(13, self.ui_metrics["settings_button_font"] - 5))
+        )
         self.ip_label.setStyleSheet("color: #8b949e; padding-right: 8px;")
         hero_top_row.addWidget(self.ip_label)
 
@@ -4082,12 +4713,22 @@ class LauncherWindow(QMainWindow):
         network_button.setObjectName("networkButton")
         network_icon_path = resource_path("icons/wifi.png")
         if network_icon_path.exists():
-            white_icon = create_white_icon(str(network_icon_path), self.ui_metrics["settings_button_size"] - 8)
+            white_icon = create_white_icon(
+                str(network_icon_path), self.ui_metrics["settings_button_size"] - 8
+            )
             network_button.setIcon(white_icon)
-            network_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
+            network_button.setIconSize(
+                QSize(
+                    self.ui_metrics["settings_button_size"] - 8,
+                    self.ui_metrics["settings_button_size"] - 8,
+                )
+            )
         network_button.setToolTip("Network Settings")
         network_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        network_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
+        network_button.setFixedSize(
+            self.ui_metrics["settings_button_size"],
+            self.ui_metrics["settings_button_size"],
+        )
         network_button.clicked.connect(self.open_network_settings)
         hero_top_row.addWidget(network_button)
 
@@ -4096,12 +4737,22 @@ class LauncherWindow(QMainWindow):
         bluetooth_button.setObjectName("bluetoothButton")
         bluetooth_icon_path = resource_path("icons/bluetooth.png")
         if bluetooth_icon_path.exists():
-            white_icon = create_white_icon(str(bluetooth_icon_path), self.ui_metrics["settings_button_size"] - 8)
+            white_icon = create_white_icon(
+                str(bluetooth_icon_path), self.ui_metrics["settings_button_size"] - 8
+            )
             bluetooth_button.setIcon(white_icon)
-            bluetooth_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
+            bluetooth_button.setIconSize(
+                QSize(
+                    self.ui_metrics["settings_button_size"] - 8,
+                    self.ui_metrics["settings_button_size"] - 8,
+                )
+            )
         bluetooth_button.setToolTip("Bluetooth Settings")
         bluetooth_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        bluetooth_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
+        bluetooth_button.setFixedSize(
+            self.ui_metrics["settings_button_size"],
+            self.ui_metrics["settings_button_size"],
+        )
         bluetooth_button.clicked.connect(self.open_bluetooth_settings)
         hero_top_row.addWidget(bluetooth_button)
 
@@ -4110,12 +4761,22 @@ class LauncherWindow(QMainWindow):
         sound_button.setObjectName("soundButton")
         sound_icon_path = resource_path("icons/sound.png")
         if sound_icon_path.exists():
-            white_icon = create_white_icon(str(sound_icon_path), self.ui_metrics["settings_button_size"] - 8)
+            white_icon = create_white_icon(
+                str(sound_icon_path), self.ui_metrics["settings_button_size"] - 8
+            )
             sound_button.setIcon(white_icon)
-            sound_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
+            sound_button.setIconSize(
+                QSize(
+                    self.ui_metrics["settings_button_size"] - 8,
+                    self.ui_metrics["settings_button_size"] - 8,
+                )
+            )
         sound_button.setToolTip("Sound Settings")
         sound_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        sound_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
+        sound_button.setFixedSize(
+            self.ui_metrics["settings_button_size"],
+            self.ui_metrics["settings_button_size"],
+        )
         sound_button.clicked.connect(self.open_sound_settings)
         hero_top_row.addWidget(sound_button)
 
@@ -4124,12 +4785,22 @@ class LauncherWindow(QMainWindow):
         brightness_button.setObjectName("brightnessButton")
         brightness_icon_path = resource_path("icons/brightness.png")
         if brightness_icon_path.exists():
-            white_icon = create_white_icon(str(brightness_icon_path), self.ui_metrics["settings_button_size"] - 8)
+            white_icon = create_white_icon(
+                str(brightness_icon_path), self.ui_metrics["settings_button_size"] - 8
+            )
             brightness_button.setIcon(white_icon)
-            brightness_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
+            brightness_button.setIconSize(
+                QSize(
+                    self.ui_metrics["settings_button_size"] - 8,
+                    self.ui_metrics["settings_button_size"] - 8,
+                )
+            )
         brightness_button.setToolTip("Brightness Settings")
         brightness_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        brightness_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
+        brightness_button.setFixedSize(
+            self.ui_metrics["settings_button_size"],
+            self.ui_metrics["settings_button_size"],
+        )
         brightness_button.clicked.connect(self.open_brightness_settings)
         hero_top_row.addWidget(brightness_button)
 
@@ -4138,12 +4809,22 @@ class LauncherWindow(QMainWindow):
         shutdown_button.setObjectName("shutdownButton")
         power_icon_path = resource_path("icons/power.png")
         if power_icon_path.exists():
-            white_icon = create_white_icon(str(power_icon_path), self.ui_metrics["settings_button_size"] - 8)
+            white_icon = create_white_icon(
+                str(power_icon_path), self.ui_metrics["settings_button_size"] - 8
+            )
             shutdown_button.setIcon(white_icon)
-            shutdown_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
+            shutdown_button.setIconSize(
+                QSize(
+                    self.ui_metrics["settings_button_size"] - 8,
+                    self.ui_metrics["settings_button_size"] - 8,
+                )
+            )
         shutdown_button.setToolTip("Shutdown")
         shutdown_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        shutdown_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
+        shutdown_button.setFixedSize(
+            self.ui_metrics["settings_button_size"],
+            self.ui_metrics["settings_button_size"],
+        )
         shutdown_button.clicked.connect(self.shutdown_system)
         hero_top_row.addWidget(shutdown_button)
 
@@ -4152,12 +4833,22 @@ class LauncherWindow(QMainWindow):
         restart_button.setObjectName("restartButton")
         reboot_icon_path = resource_path("icons/reboot.png")
         if reboot_icon_path.exists():
-            white_icon = create_white_icon(str(reboot_icon_path), self.ui_metrics["settings_button_size"] - 8)
+            white_icon = create_white_icon(
+                str(reboot_icon_path), self.ui_metrics["settings_button_size"] - 8
+            )
             restart_button.setIcon(white_icon)
-            restart_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
+            restart_button.setIconSize(
+                QSize(
+                    self.ui_metrics["settings_button_size"] - 8,
+                    self.ui_metrics["settings_button_size"] - 8,
+                )
+            )
         restart_button.setToolTip("Restart")
         restart_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        restart_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
+        restart_button.setFixedSize(
+            self.ui_metrics["settings_button_size"],
+            self.ui_metrics["settings_button_size"],
+        )
         restart_button.clicked.connect(self.restart_system)
         hero_top_row.addWidget(restart_button)
 
@@ -4166,12 +4857,22 @@ class LauncherWindow(QMainWindow):
         update_button.setObjectName("updateButton")
         update_icon_path = resource_path("icons/update.png")
         if update_icon_path.exists():
-            white_icon = create_white_icon(str(update_icon_path), self.ui_metrics["settings_button_size"] - 8)
+            white_icon = create_white_icon(
+                str(update_icon_path), self.ui_metrics["settings_button_size"] - 8
+            )
             update_button.setIcon(white_icon)
-            update_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
+            update_button.setIconSize(
+                QSize(
+                    self.ui_metrics["settings_button_size"] - 8,
+                    self.ui_metrics["settings_button_size"] - 8,
+                )
+            )
         update_button.setToolTip("Updates")
         update_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        update_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
+        update_button.setFixedSize(
+            self.ui_metrics["settings_button_size"],
+            self.ui_metrics["settings_button_size"],
+        )
         update_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
 
         # Create update menu
@@ -4209,12 +4910,22 @@ class LauncherWindow(QMainWindow):
         remote_button.setObjectName("remoteButton")
         remote_icon_path = resource_path("icons/remote.png")
         if remote_icon_path.exists():
-            white_icon = create_white_icon(str(remote_icon_path), self.ui_metrics["settings_button_size"] - 8)
+            white_icon = create_white_icon(
+                str(remote_icon_path), self.ui_metrics["settings_button_size"] - 8
+            )
             remote_button.setIcon(white_icon)
-            remote_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
+            remote_button.setIconSize(
+                QSize(
+                    self.ui_metrics["settings_button_size"] - 8,
+                    self.ui_metrics["settings_button_size"] - 8,
+                )
+            )
         remote_button.setToolTip("Remote Control Settings")
         remote_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        remote_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
+        remote_button.setFixedSize(
+            self.ui_metrics["settings_button_size"],
+            self.ui_metrics["settings_button_size"],
+        )
         remote_button.clicked.connect(self.open_remote_settings)
         hero_top_row.addWidget(remote_button)
 
@@ -4223,12 +4934,22 @@ class LauncherWindow(QMainWindow):
         auto_button.setObjectName("autoButton")
         auto_icon_path = resource_path("icons/auto.png")
         if auto_icon_path.exists():
-            white_icon = create_white_icon(str(auto_icon_path), self.ui_metrics["settings_button_size"] - 8)
+            white_icon = create_white_icon(
+                str(auto_icon_path), self.ui_metrics["settings_button_size"] - 8
+            )
             auto_button.setIcon(white_icon)
-            auto_button.setIconSize(QSize(self.ui_metrics["settings_button_size"] - 8, self.ui_metrics["settings_button_size"] - 8))
+            auto_button.setIconSize(
+                QSize(
+                    self.ui_metrics["settings_button_size"] - 8,
+                    self.ui_metrics["settings_button_size"] - 8,
+                )
+            )
         auto_button.setToolTip("Auto-Open")
         auto_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        auto_button.setFixedSize(self.ui_metrics["settings_button_size"], self.ui_metrics["settings_button_size"])
+        auto_button.setFixedSize(
+            self.ui_metrics["settings_button_size"],
+            self.ui_metrics["settings_button_size"],
+        )
         auto_button.clicked.connect(self.open_settings)
         hero_top_row.addWidget(auto_button)
         hero_layout.addLayout(hero_top_row)
@@ -4266,7 +4987,9 @@ class LauncherWindow(QMainWindow):
         self.auto_launch_status_label = QLabel("")
         self.auto_launch_status_label.setObjectName("autoLaunchStatus")
         self.auto_launch_status_label.setWordWrap(True)
-        self.auto_launch_status_label.setFont(QFont("Sans Serif", self.ui_metrics["status_font"]))
+        self.auto_launch_status_label.setFont(
+            QFont("Sans Serif", self.ui_metrics["status_font"])
+        )
         self.auto_launch_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.auto_launch_status_label.hide()
         auto_launch_status_row.addWidget(self.auto_launch_status_label)
@@ -4690,14 +5413,13 @@ class LauncherWindow(QMainWindow):
             if widget is not None:
                 widget.deleteLater()
         # Clear animation references
-        if hasattr(self, '_fade_animations'):
+        if hasattr(self, "_fade_animations"):
             self._fade_animations.clear()
 
     def clear_fade_animations(self):
         """Clear fade animation references after they complete"""
-        if hasattr(self, '_fade_animations'):
+        if hasattr(self, "_fade_animations"):
             self._fade_animations.clear()
-
 
     def populate_tiles(self):
         self.clear_tiles()
@@ -4787,7 +5509,9 @@ class LauncherWindow(QMainWindow):
             row_scroll.setProperty("rowScroll", "true")
             row_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
             row_scroll.setWidgetResizable(False)
-            row_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            row_scroll.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
             row_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             row_scroll.setFixedHeight(self.ui_metrics["row_scroll_height"])
 
@@ -4815,7 +5539,11 @@ class LauncherWindow(QMainWindow):
                 )
                 tile.entry_kind = entry["kind"]
                 tile.entry_item = app
-                tile.clicked.connect(lambda checked=False, item=app, kind=entry["kind"]: self.launch_app(item, kind))
+                tile.clicked.connect(
+                    lambda checked=False, item=app, kind=entry["kind"]: self.launch_app(
+                        item, kind
+                    )
+                )
 
                 # Create callbacks with proper closure
                 current_app = app
@@ -4825,10 +5553,18 @@ class LauncherWindow(QMainWindow):
 
                 card = AppCard(
                     tile,
-                    lambda checked=False, item=current_app, kind=current_kind: self.prompt_edit_entry(kind, item),
-                    lambda checked=False, item=current_app, kind=current_kind: self.prompt_delete_entry(kind, item),
-                    lambda checked=False, item=current_app, kind=current_kind: self.toggle_favorite(item, kind),
-                    lambda direction, item=current_app, kind=current_kind, idx=current_index: self.reorder_app(item, kind, direction, idx, current_entries),
+                    lambda checked=False, item=current_app, kind=current_kind: (
+                        self.prompt_edit_entry(kind, item)
+                    ),
+                    lambda checked=False, item=current_app, kind=current_kind: (
+                        self.prompt_delete_entry(kind, item)
+                    ),
+                    lambda checked=False, item=current_app, kind=current_kind: (
+                        self.toggle_favorite(item, kind)
+                    ),
+                    lambda direction, item=current_app, kind=current_kind, idx=current_index: (
+                        self.reorder_app(item, kind, direction, idx, current_entries)
+                    ),
                     metrics=self.ui_metrics,
                     app_data=current_app,
                     kind=current_kind,
@@ -4838,7 +5574,9 @@ class LauncherWindow(QMainWindow):
                 is_favorited = self.is_app_favorited(current_app, current_kind)
                 if card.favorite_button:
                     card.favorite_button.setText("★" if is_favorited else "☆")
-                    card.favorite_button.setToolTip("Remove from favorites" if is_favorited else "Add to favorites")
+                    card.favorite_button.setToolTip(
+                        "Remove from favorites" if is_favorited else "Add to favorites"
+                    )
 
                 tile.card_shell = card
                 tile.row_scroll = row_scroll
@@ -4850,7 +5588,9 @@ class LauncherWindow(QMainWindow):
 
                 future = self._icon_pool.submit(self._resolve_icon, entry)
                 future.add_done_callback(
-                    lambda pending, token=request_token, button=tile: self._queue_icon_result(token, button, pending)
+                    lambda pending, token=request_token, button=tile: (
+                        self._queue_icon_result(token, button, pending)
+                    )
                 )
 
             row_layout.addStretch(1)
@@ -4882,7 +5622,9 @@ class LauncherWindow(QMainWindow):
         add_row_scroll.setProperty("rowScroll", "true")
         add_row_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         add_row_scroll.setWidgetResizable(False)
-        add_row_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        add_row_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         add_row_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         add_row_scroll.setFixedHeight(self.ui_metrics["row_scroll_height"])
         add_row_widget = DropRowWidget()
@@ -4920,35 +5662,49 @@ class LauncherWindow(QMainWindow):
         for idx, app in enumerate(self.config.get("native_apps", [])):
             if not is_installed(app.get("cmd", "")):
                 continue
-            subtitle = app.get("cmd", "").split()[0] if app.get("cmd") else "Application"
+            subtitle = (
+                app.get("cmd", "").split()[0] if app.get("cmd") else "Application"
+            )
             app_id = self.get_app_id(app)
-            is_favorited = any(f.get("id") == app_id and f.get("kind") == "native" for f in favorites)
-            native_entries.append({
-                "kind": "native",
-                "item": app,
-                "subtitle": subtitle,
-                "tooltip": app.get("cmd", ""),
-                "favorited": is_favorited,
-                "original_index": idx,
-            })
+            is_favorited = any(
+                f.get("id") == app_id and f.get("kind") == "native" for f in favorites
+            )
+            native_entries.append(
+                {
+                    "kind": "native",
+                    "item": app,
+                    "subtitle": subtitle,
+                    "tooltip": app.get("cmd", ""),
+                    "favorited": is_favorited,
+                    "original_index": idx,
+                }
+            )
 
         for idx, app in enumerate(self.config.get("web_apps", [])):
             url = app.get("url", "")
             subtitle = url.replace("https://", "").replace("http://", "")
             app_id = self.get_app_id(app)
-            is_favorited = any(f.get("id") == app_id and f.get("kind") == "web" for f in favorites)
-            web_entries.append({
-                "kind": "web",
-                "item": app,
-                "subtitle": subtitle,
-                "tooltip": url,
-                "favorited": is_favorited,
-                "original_index": idx,
-            })
+            is_favorited = any(
+                f.get("id") == app_id and f.get("kind") == "web" for f in favorites
+            )
+            web_entries.append(
+                {
+                    "kind": "web",
+                    "item": app,
+                    "subtitle": subtitle,
+                    "tooltip": url,
+                    "favorited": is_favorited,
+                    "original_index": idx,
+                }
+            )
 
         # Sort entries: favorited first, then by original order
-        native_entries.sort(key=lambda x: (not x.get("favorited", False), x.get("original_index", 0)))
-        web_entries.sort(key=lambda x: (not x.get("favorited", False), x.get("original_index", 0)))
+        native_entries.sort(
+            key=lambda x: (not x.get("favorited", False), x.get("original_index", 0))
+        )
+        web_entries.sort(
+            key=lambda x: (not x.get("favorited", False), x.get("original_index", 0))
+        )
 
         categories = []
         if native_entries:
@@ -4960,6 +5716,7 @@ class LauncherWindow(QMainWindow):
     def get_installed_apps(self):
         """Get list of installed apps for remote control app listing"""
         import base64
+
         apps_list = []
         categories = self.get_categorized_entries()
 
@@ -4984,30 +5741,32 @@ class LauncherWindow(QMainWindow):
                         if icon_file.exists():
                             with open(icon_file, "rb") as f:
                                 icon_bytes = f.read()
-                                icon_b64 = base64.b64encode(icon_bytes).decode('utf-8')
+                                icon_b64 = base64.b64encode(icon_bytes).decode("utf-8")
                                 # Determine MIME type from extension
                                 ext = icon_file.suffix.lower()
                                 mime_types = {
-                                    '.png': 'image/png',
-                                    '.jpg': 'image/jpeg',
-                                    '.jpeg': 'image/jpeg',
-                                    '.gif': 'image/gif',
-                                    '.svg': 'image/svg+xml',
-                                    '.ico': 'image/x-icon',
-                                    '.xpm': 'image/x-xpixmap',
+                                    ".png": "image/png",
+                                    ".jpg": "image/jpeg",
+                                    ".jpeg": "image/jpeg",
+                                    ".gif": "image/gif",
+                                    ".svg": "image/svg+xml",
+                                    ".ico": "image/x-icon",
+                                    ".xpm": "image/x-xpixmap",
                                 }
-                                mime_type = mime_types.get(ext, 'image/png')
+                                mime_type = mime_types.get(ext, "image/png")
                                 icon_data = f"data:{mime_type};base64,{icon_b64}"
                     except Exception as e:
                         logging.warning("Failed to encode icon for %s: %s", app_name, e)
 
-                apps_list.append({
-                    "id": app_id,
-                    "name": app_name,
-                    "kind": entry["kind"],
-                    "icon": icon_data,  # Base64 data URI
-                    "category": category_name
-                })
+                apps_list.append(
+                    {
+                        "id": app_id,
+                        "name": app_name,
+                        "kind": entry["kind"],
+                        "icon": icon_data,  # Base64 data URI
+                        "category": category_name,
+                    }
+                )
 
         return apps_list
 
@@ -5071,13 +5830,14 @@ class LauncherWindow(QMainWindow):
             for category_name, entries in categories:
                 for entry in entries:
                     item = entry["item"]
-                    item_id = item.get("id", item.get("name", "")).lower().replace(" ", "_")
+                    item_id = (
+                        item.get("id", item.get("name", "")).lower().replace(" ", "_")
+                    )
                     if item_id == app_id_normalized:
                         return False, f"{app_name} is already in your launcher"
 
             # Find the app in desktop files for native apps
             if app_kind == "native":
-                from pathlib import Path
                 desktop_dirs = desktop_file_locations()
                 app_entry = None
 
@@ -5090,16 +5850,25 @@ class LauncherWindow(QMainWindow):
                             parser.read(desktop_file)
                             if parser.has_section("Desktop Entry"):
                                 name = parser.get("Desktop Entry", "Name", fallback="")
-                                if name.lower().replace(" ", "_") == app_id_normalized or \
-                                   desktop_file.stem.lower().replace(" ", "_") == app_id_normalized:
-                                    exec_cmd = parser.get("Desktop Entry", "Exec", fallback="")
-                                    icon = parser.get("Desktop Entry", "Icon", fallback="")
+                                if (
+                                    name.lower().replace(" ", "_") == app_id_normalized
+                                    or desktop_file.stem.lower().replace(" ", "_")
+                                    == app_id_normalized
+                                ):
+                                    exec_cmd = parser.get(
+                                        "Desktop Entry", "Exec", fallback=""
+                                    )
+                                    icon = parser.get(
+                                        "Desktop Entry", "Icon", fallback=""
+                                    )
                                     if exec_cmd:
                                         app_entry = {
                                             "id": app_id_normalized,
                                             "name": app_name,
-                                            "cmd": exec_cmd.split()[0] if exec_cmd else "",
-                                            "icon": icon
+                                            "cmd": exec_cmd.split()[0]
+                                            if exec_cmd
+                                            else "",
+                                            "icon": icon,
                                         }
                                         break
                         except Exception:
@@ -5120,11 +5889,11 @@ class LauncherWindow(QMainWindow):
                     return False, f"Could not find {app_name} on your system"
 
             # For web apps, they should already be in config
-            return False, f"Web apps must be added through settings"
+            return False, "Web apps must be added through settings"
 
         except Exception as e:
             logging.exception("Failed to add app")
-            return False, f"Error adding app: {str(e)}"
+            return False, f"Error adding app: {e!s}"
 
     def get_launchable_entries(self):
         entries = []
@@ -5143,10 +5912,14 @@ class LauncherWindow(QMainWindow):
         try:
             icon_path = future.result() or ""
         except Exception:
-            logging.exception("Failed to resolve icon for %s", getattr(tile, "title", "tile"))
+            logging.exception(
+                "Failed to resolve icon for %s", getattr(tile, "title", "tile")
+            )
         self._icon_bridge.icon_ready.emit(request_token, tile, icon_path)
 
-    def _apply_resolved_icon(self, request_token: int, tile: TileButton, icon_path: str):
+    def _apply_resolved_icon(
+        self, request_token: int, tile: TileButton, icon_path: str
+    ):
         if request_token != self._icon_request_token or tile not in self.tiles:
             return
         tile.set_tile_icon(icon_path)
@@ -5193,13 +5966,17 @@ class LauncherWindow(QMainWindow):
         options = []
         for entry in self.get_launchable_entries():
             app = entry["item"]
-            target = app.get("cmd", "") if entry["kind"] == "native" else app.get("url", "")
+            target = (
+                app.get("cmd", "") if entry["kind"] == "native" else app.get("url", "")
+            )
             label = f"{app.get('name', 'Untitled')} ({'App' if entry['kind'] == 'native' else 'Site'})"
-            options.append({
-                "kind": entry["kind"],
-                "target": target,
-                "label": label,
-            })
+            options.append(
+                {
+                    "kind": entry["kind"],
+                    "target": target,
+                    "label": label,
+                }
+            )
         return options
 
     def normalize_url(self, url: str) -> str:
@@ -5212,14 +5989,16 @@ class LauncherWindow(QMainWindow):
 
     def prompt_add_entry(self):
         dialog = AddItemDialog(self)
-        if dialog.exec() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         values = dialog.values()
         entry_type = values["type"]
         name = values["name"]
         value = values["value"]
         if not name or not value:
-            QMessageBox.information(self, "Missing Details", "Enter both a name and a command or URL.")
+            QMessageBox.information(
+                self, "Missing Details", "Enter both a name and a command or URL."
+            )
             return
         if entry_type == "Application":
             self.add_native_app(name, value)
@@ -5237,12 +6016,14 @@ class LauncherWindow(QMainWindow):
             value_text=value_text,
             allow_type_change=False,
         )
-        if dialog.exec() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
         values = dialog.values()
         if not values["name"] or not values["value"]:
-            QMessageBox.information(self, "Missing Details", "Enter both a name and a command or URL.")
+            QMessageBox.information(
+                self, "Missing Details", "Enter both a name and a command or URL."
+            )
             return
 
         app["name"] = values["name"]
@@ -5269,7 +6050,7 @@ class LauncherWindow(QMainWindow):
             title_text="Delete App",
             body_text=f"Remove '{app.get('name', 'this app')}' from LinuxTV?",
         )
-        if dialog.exec() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
         collection_name = "native_apps" if kind == "native" else "web_apps"
@@ -5321,19 +6102,21 @@ class LauncherWindow(QMainWindow):
         # Only add if it wasn't favorited before
         if not was_favorited:
             # Add to favorites
-            favorites.append({
-                "id": app_id,
-                "kind": kind,
-                "name": app.get("name", "")
-            })
+            favorites.append({"id": app_id, "kind": kind, "name": app.get("name", "")})
 
         self.config["favorites"] = favorites
         try:
             save_config(self.config_path, self.config)
-            logging.info("%s %s from favorites", "Removed" if was_favorited else "Added", app.get("name", ""))
+            logging.info(
+                "%s %s from favorites",
+                "Removed" if was_favorited else "Added",
+                app.get("name", ""),
+            )
         except Exception as exc:
             logging.exception("Failed to save favorites")
-            QMessageBox.critical(self, "Save Failed", f"Could not save favorites:\n{exc}")
+            QMessageBox.critical(
+                self, "Save Failed", f"Could not save favorites:\n{exc}"
+            )
             return
 
         # Refresh tiles to update order and button states
@@ -5364,7 +6147,10 @@ class LauncherWindow(QMainWindow):
             return  # Can't move further
 
         # Swap in config
-        collection[config_index], collection[new_index] = collection[new_index], collection[config_index]
+        collection[config_index], collection[new_index] = (
+            collection[new_index],
+            collection[config_index],
+        )
         self.config[collection_name] = collection
 
         try:
@@ -5381,10 +6167,13 @@ class LauncherWindow(QMainWindow):
     def handle_card_drop(self, source_data, target_app, target_kind):
         """Handle drag-and-drop reordering of cards"""
         import logging
+
         source_kind = source_data.get("kind")
         source_app_id = source_data.get("app_id")
 
-        logging.info(f"handle_card_drop called: source={source_app_id} ({source_kind}), target={target_app} ({target_kind})")
+        logging.info(
+            f"handle_card_drop called: source={source_app_id} ({source_kind}), target={target_app} ({target_kind})"
+        )
 
         # Only allow reordering within the same collection
         if source_kind != target_kind:
@@ -5423,7 +6212,9 @@ class LauncherWindow(QMainWindow):
                 target_index = i
 
         if source_index == -1 or target_index == -1 or source_index == target_index:
-            logging.info(f"Invalid indices: source={source_index}, target={target_index}")
+            logging.info(
+                f"Invalid indices: source={source_index}, target={target_index}"
+            )
             return
 
         logging.info(f"Swapping positions: {source_index} -> {target_index}")
@@ -5442,7 +6233,11 @@ class LauncherWindow(QMainWindow):
         self.config[collection_name] = collection
         try:
             save_config(self.config_path, self.config)
-            logging.info("Drag-drop reordered %s to position %d", source_app.get("name", ""), target_index)
+            logging.info(
+                "Drag-drop reordered %s to position %d",
+                source_app.get("name", ""),
+                target_index,
+            )
         except Exception as exc:
             logging.exception("Failed to save config")
             QMessageBox.critical(self, "Save Failed", f"Could not save config:\n{exc}")
@@ -5458,7 +6253,7 @@ class LauncherWindow(QMainWindow):
             auth.get("username", ""),
             self,
         )
-        if dialog.exec() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
         values = dialog.values()
@@ -5472,10 +6267,14 @@ class LauncherWindow(QMainWindow):
                 QMessageBox.information(self, "Invalid Input", "Username is required.")
                 return
             if password != confirm_password:
-                QMessageBox.information(self, "Password Mismatch", "Passwords do not match.")
+                QMessageBox.information(
+                    self, "Password Mismatch", "Passwords do not match."
+                )
                 return
             if len(password) < 4:
-                QMessageBox.information(self, "Weak Password", "Password must be at least 4 characters.")
+                QMessageBox.information(
+                    self, "Weak Password", "Password must be at least 4 characters."
+                )
                 return
 
         # Hash and save credentials
@@ -5491,7 +6290,7 @@ class LauncherWindow(QMainWindow):
             self.get_auto_launch_options(),
             self,
         )
-        if dialog.exec() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
         values = dialog.values()
@@ -5499,10 +6298,14 @@ class LauncherWindow(QMainWindow):
         try:
             auto_launch_delay_seconds = int(auto_launch_delay_text)
         except ValueError:
-            QMessageBox.information(self, "Invalid Delay", "Enter a whole number of seconds for auto open.")
+            QMessageBox.information(
+                self, "Invalid Delay", "Enter a whole number of seconds for auto open."
+            )
             return
         if auto_launch_delay_seconds < 1:
-            QMessageBox.information(self, "Invalid Delay", "Auto open delay must be at least 1 second.")
+            QMessageBox.information(
+                self, "Invalid Delay", "Auto open delay must be at least 1 second."
+            )
             return
 
         self.config["auto_launch"] = {
@@ -5515,7 +6318,9 @@ class LauncherWindow(QMainWindow):
             save_config(self.config_path, self.config)
         except Exception as exc:
             logging.exception("Failed to save settings")
-            QMessageBox.critical(self, "Save Failed", f"Could not save settings:\n{exc}")
+            QMessageBox.critical(
+                self, "Save Failed", f"Could not save settings:\n{exc}"
+            )
             return
 
         self.reset_auto_launch_timer()
@@ -5558,7 +6363,11 @@ class LauncherWindow(QMainWindow):
     def scan_wifi_networks(self):
         nmcli = shutil.which("nmcli")
         if not nmcli:
-            return [], "", "NetworkManager tools are not installed. Install `network-manager` to manage Wi-Fi here."
+            return (
+                [],
+                "",
+                "NetworkManager tools are not installed. Install `network-manager` to manage Wi-Fi here.",
+            )
 
         import time
 
@@ -5570,17 +6379,20 @@ class LauncherWindow(QMainWindow):
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=5
+                timeout=5,
             )
 
             # If WiFi is off, turn it on
-            if "disabled" in radio_result.stdout.lower() or radio_result.returncode != 0:
+            if (
+                "disabled" in radio_result.stdout.lower()
+                or radio_result.returncode != 0
+            ):
                 subprocess.run(
                     [nmcli, "radio", "wifi", "on"],
                     capture_output=True,
                     text=True,
                     check=False,
-                    timeout=10
+                    timeout=10,
                 )
                 time.sleep(3)  # Wait for WiFi to enable
         except Exception:
@@ -5595,14 +6407,14 @@ class LauncherWindow(QMainWindow):
                     capture_output=True,
                     text=True,
                     check=False,
-                    timeout=5
+                    timeout=5,
                 )
                 if status_result.stdout.strip() != "active":
                     subprocess.run(
                         ["sudo", systemctl_path, "start", "NetworkManager"],
                         capture_output=True,
                         check=False,
-                        timeout=10
+                        timeout=10,
                     )
                     time.sleep(2)
         except Exception:
@@ -5611,7 +6423,17 @@ class LauncherWindow(QMainWindow):
         current_wifi = ""
         try:
             current_result = subprocess.run(
-                [nmcli, "--colors", "no", "--terse", "--fields", "NAME,TYPE", "connection", "show", "--active"],
+                [
+                    nmcli,
+                    "--colors",
+                    "no",
+                    "--terse",
+                    "--fields",
+                    "NAME,TYPE",
+                    "connection",
+                    "show",
+                    "--active",
+                ],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -5701,12 +6523,22 @@ class LauncherWindow(QMainWindow):
                 },
             )
 
-        networks.sort(key=lambda item: (0 if item.get("active") else 1, -(item.get("signal", -1)), item.get("ssid", "").lower()))
+        networks.sort(
+            key=lambda item: (
+                0 if item.get("active") else 1,
+                -(item.get("signal", -1)),
+                item.get("ssid", "").lower(),
+            )
+        )
         for item in networks:
             item.pop("signal", None)
             item.pop("active", None)
 
-        message = f"Found {len(networks)} network(s)." if networks else "No Wi-Fi networks found. Try Refresh Networks again."
+        message = (
+            f"Found {len(networks)} network(s)."
+            if networks
+            else "No Wi-Fi networks found. Try Refresh Networks again."
+        )
         return networks, current_wifi, message
 
     def connect_to_wifi(self, network_info, password: str):
@@ -5726,7 +6558,16 @@ class LauncherWindow(QMainWindow):
         device_name = ""
         try:
             device_result = subprocess.run(
-                [nmcli, "--colors", "no", "--terse", "--fields", "DEVICE,TYPE,STATE", "device", "status"],
+                [
+                    nmcli,
+                    "--colors",
+                    "no",
+                    "--terse",
+                    "--fields",
+                    "DEVICE,TYPE,STATE",
+                    "device",
+                    "status",
+                ],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -5746,7 +6587,16 @@ class LauncherWindow(QMainWindow):
         # If a profile already exists, try bringing it up first.
         try:
             profile_result = subprocess.run(
-                [nmcli, "--colors", "no", "--terse", "--fields", "NAME,TYPE", "connection", "show"],
+                [
+                    nmcli,
+                    "--colors",
+                    "no",
+                    "--terse",
+                    "--fields",
+                    "NAME,TYPE",
+                    "connection",
+                    "show",
+                ],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -5755,7 +6605,11 @@ class LauncherWindow(QMainWindow):
             if profile_result.returncode == 0:
                 for line in profile_result.stdout.splitlines():
                     parts = line.split(":", 1)
-                    if len(parts) == 2 and parts[0].strip() == ssid and parts[1].strip() == "802-11-wireless":
+                    if (
+                        len(parts) == 2
+                        and parts[0].strip() == ssid
+                        and parts[1].strip() == "802-11-wireless"
+                    ):
                         up_command = [nmcli, "connection", "up", ssid]
                         if device_name:
                             up_command.extend(["ifname", device_name])
@@ -5795,7 +6649,15 @@ class LauncherWindow(QMainWindow):
 
         if result.returncode != 0 and not secure_network:
             try:
-                hidden_fallback = [nmcli, "device", "wifi", "connect", ssid, "hidden", "yes"]
+                hidden_fallback = [
+                    nmcli,
+                    "device",
+                    "wifi",
+                    "connect",
+                    ssid,
+                    "hidden",
+                    "yes",
+                ]
                 if device_name:
                     hidden_fallback.extend(["ifname", device_name])
                 result = subprocess.run(
@@ -5860,12 +6722,16 @@ class LauncherWindow(QMainWindow):
     def scan_bluetooth_devices(self):
         bluetoothctl = shutil.which("bluetoothctl")
         if not bluetoothctl:
-            return [], "", "bluetoothctl is not installed. Install `bluez` to manage Bluetooth here."
+            return (
+                [],
+                "",
+                "bluetoothctl is not installed. Install `bluez` to manage Bluetooth here.",
+            )
 
         current_bluetooth = ""
         devices = {}
-        import time
         import re
+        import time
 
         try:
             # Try to start Bluetooth service if it's not running
@@ -5877,7 +6743,7 @@ class LauncherWindow(QMainWindow):
                     capture_output=True,
                     text=True,
                     check=False,
-                    timeout=5
+                    timeout=5,
                 )
                 # If not active, try to start it
                 if status_result.stdout.strip() != "active":
@@ -5885,7 +6751,7 @@ class LauncherWindow(QMainWindow):
                         ["sudo", systemctl_path, "start", "bluetooth"],
                         capture_output=True,
                         check=False,
-                        timeout=10
+                        timeout=10,
                     )
                     time.sleep(2)  # Reduced from 3s
 
@@ -5896,13 +6762,20 @@ class LauncherWindow(QMainWindow):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                bufsize=1
+                bufsize=1,
             )
 
             # First, try to unblock Bluetooth if rfkill is available
-            rfkill_path = shutil.which("rfkill") or shutil.which("rfkill", path=os.environ.get("PATH", "") + os.pathsep + "/usr/sbin")
+            rfkill_path = shutil.which("rfkill") or shutil.which(
+                "rfkill", path=os.environ.get("PATH", "") + os.pathsep + "/usr/sbin"
+            )
             if rfkill_path:
-                subprocess.run([rfkill_path, "unblock", "bluetooth"], capture_output=True, check=False, timeout=5)
+                subprocess.run(
+                    [rfkill_path, "unblock", "bluetooth"],
+                    capture_output=True,
+                    check=False,
+                    timeout=5,
+                )
 
             # Check current controller state
             show_result = subprocess.run(
@@ -5910,14 +6783,14 @@ class LauncherWindow(QMainWindow):
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=10
+                timeout=10,
             )
 
             bluetooth_was_off = True
             if show_result.returncode == 0:
                 for line in show_result.stdout.splitlines():
-                    if 'Powered:' in line:
-                        if 'yes' in line.lower():
+                    if "Powered:" in line:
+                        if "yes" in line.lower():
                             bluetooth_was_off = False
                         break
 
@@ -5995,7 +6868,7 @@ class LauncherWindow(QMainWindow):
 
             # Parse discovered devices from output
             # Format: "Device XX:XX:XX:XX:XX:XX Device Name"
-            device_pattern = re.compile(r'^Device\s+([\w:]+)\s+(.+)$', re.MULTILINE)
+            device_pattern = re.compile(r"^Device\s+([\w:]+)\s+(.+)$", re.MULTILINE)
             for match in device_pattern.finditer(stdout):
                 mac = match.group(1)
                 name = match.group(2).strip()
@@ -6005,7 +6878,7 @@ class LauncherWindow(QMainWindow):
                         "name": name,
                         "label": f"{name} ({mac})",
                         "connected": False,
-                        "paired": False
+                        "paired": False,
                     }
 
             # Get detailed info for each device to check connection/paired status
@@ -6024,9 +6897,9 @@ class LauncherWindow(QMainWindow):
                         is_paired = False
 
                         for line in info_result.stdout.splitlines():
-                            if 'Connected:' in line and 'yes' in line.lower():
+                            if "Connected:" in line and "yes" in line.lower():
                                 is_connected = True
-                            if 'Paired:' in line and 'yes' in line.lower():
+                            if "Paired:" in line and "yes" in line.lower():
                                 is_paired = True
 
                         # Update label with status
@@ -6037,11 +6910,15 @@ class LauncherWindow(QMainWindow):
                             status_parts.append("Paired")
 
                         if status_parts:
-                            devices[mac]["label"] = f"{devices[mac]['name']} ({mac}) [{' | '.join(status_parts)}]"
+                            devices[mac]["label"] = (
+                                f"{devices[mac]['name']} ({mac}) [{' | '.join(status_parts)}]"
+                            )
                             devices[mac]["connected"] = is_connected
                             devices[mac]["paired"] = is_paired
                         else:
-                            devices[mac]["label"] = f"{devices[mac]['name']} ({mac}) [Discovered]"
+                            devices[mac]["label"] = (
+                                f"{devices[mac]['name']} ({mac}) [Discovered]"
+                            )
                 except Exception:
                     pass
 
@@ -6057,7 +6934,7 @@ class LauncherWindow(QMainWindow):
 
                 if paired_result.returncode == 0:
                     for line in paired_result.stdout.splitlines():
-                        match = re.match(r'Device\s+([\w:]+)\s+(.+)', line)
+                        match = re.match(r"Device\s+([\w:]+)\s+(.+)", line)
                         if match:
                             mac = match.group(1)
                             name = match.group(2).strip()
@@ -6067,19 +6944,26 @@ class LauncherWindow(QMainWindow):
                                     "name": name,
                                     "label": f"{name} ({mac}) [Paired]",
                                     "connected": False,
-                                    "paired": True
+                                    "paired": True,
                                 }
             except Exception:
                 pass
 
         except Exception as exc:
             import logging
+
             logging.exception("Failed to scan Bluetooth devices")
             return [], "", f"Could not scan: {exc}"
 
         # Convert to list and sort: connected first, then paired, then by name
         device_list = list(devices.values())
-        device_list.sort(key=lambda d: (not d.get("connected", False), not d.get("paired", False), d.get("name", "")))
+        device_list.sort(
+            key=lambda d: (
+                not d.get("connected", False),
+                not d.get("paired", False),
+                d.get("name", ""),
+            )
+        )
 
         if not device_list:
             message = "No Bluetooth devices found. Try: 1) sudo rfkill unblock bluetooth, 2) Ensure Bluetooth service is running (sudo systemctl status bluetooth), 3) Make devices discoverable."
@@ -6102,6 +6986,7 @@ class LauncherWindow(QMainWindow):
 
         try:
             import logging
+
             logging.info(f"Attempting to connect to Bluetooth device: {mac}")
 
             # Step 1: Check if device is already paired
@@ -6134,9 +7019,16 @@ class LauncherWindow(QMainWindow):
                 logging.info(f"Pair result: {pair_output}")
 
                 # Check if pairing was successful
-                if "Pairing successful" not in pair_output and pair_result.returncode != 0:
+                if (
+                    "Pairing successful" not in pair_output
+                    and pair_result.returncode != 0
+                ):
                     # Pairing failed
-                    error_msg = (pair_result.stderr or pair_result.stdout or "Unknown pairing error").strip()
+                    error_msg = (
+                        pair_result.stderr
+                        or pair_result.stdout
+                        or "Unknown pairing error"
+                    ).strip()
                     return False, f"Pairing failed for {mac}: {error_msg[-200:]}", ""
 
             # Step 3: Trust the device (important for automatic reconnection)
@@ -6161,7 +7053,9 @@ class LauncherWindow(QMainWindow):
                 timeout=30,  # Increased timeout for connection
             )
 
-            connect_output = (connect_result.stdout or "") + (connect_result.stderr or "")
+            connect_output = (connect_result.stdout or "") + (
+                connect_result.stderr or ""
+            )
             logging.info(f"Connect result: {connect_output}")
 
             # Check if connection was successful
@@ -6188,7 +7082,10 @@ class LauncherWindow(QMainWindow):
             elif "Failed to connect" in error_msg:
                 # Extract the specific error
                 import re
-                error_match = re.search(r'Failed to connect:.*?([\w-]+)$', error_msg, re.MULTILINE)
+
+                error_match = re.search(
+                    r"Failed to connect:.*?([\w-]+)$", error_msg, re.MULTILINE
+                )
                 if error_match:
                     specific_error = error_match.group(1)
                     error_msg = f"Connection failed: {specific_error}. Make sure the device is discoverable and try again."
@@ -6197,6 +7094,7 @@ class LauncherWindow(QMainWindow):
 
         except Exception as exc:
             import logging
+
             logging.exception("Failed to connect to Bluetooth")
             return False, f"Could not connect to {mac}: {exc}", ""
 
@@ -6215,6 +7113,7 @@ class LauncherWindow(QMainWindow):
 
         try:
             import logging
+
             logging.info(f"Attempting to remove Bluetooth device: {mac}")
 
             # First, disconnect if connected
@@ -6247,14 +7146,20 @@ class LauncherWindow(QMainWindow):
             remove_output = (remove_result.stdout or "") + (remove_result.stderr or "")
             logging.info(f"Remove result: {remove_output}")
 
-            if "Device has been removed" in remove_output or remove_result.returncode == 0:
+            if (
+                "Device has been removed" in remove_output
+                or remove_result.returncode == 0
+            ):
                 return True, f"Removed device {mac}."
             else:
-                error_msg = (remove_result.stderr or remove_result.stdout or "Unknown error").strip()
+                error_msg = (
+                    remove_result.stderr or remove_result.stdout or "Unknown error"
+                ).strip()
                 return False, f"Failed to remove {mac}: {error_msg[-200:]}"
 
         except Exception as exc:
             import logging
+
             logging.exception("Failed to remove Bluetooth device")
             return False, f"Could not remove {mac}: {exc}"
 
@@ -6271,7 +7176,7 @@ class LauncherWindow(QMainWindow):
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=10
+                timeout=10,
             )
 
             if result.returncode == 0 and result.stdout.strip():
@@ -6281,10 +7186,7 @@ class LauncherWindow(QMainWindow):
                         sink_name = parts[1]
                         # Get friendly name
                         friendly_name = self.get_sink_friendly_name(sink_name)
-                        sinks.append({
-                            "name": sink_name,
-                            "label": friendly_name
-                        })
+                        sinks.append({"name": sink_name, "label": friendly_name})
         except Exception as e:
             logging.error(f"Error getting audio sinks: {e}")
 
@@ -6302,7 +7204,7 @@ class LauncherWindow(QMainWindow):
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=5
+                timeout=5,
             )
 
             if result.returncode == 0:
@@ -6327,7 +7229,7 @@ class LauncherWindow(QMainWindow):
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=5
+                timeout=5,
             )
             if result.returncode == 0:
                 return result.stdout.strip()
@@ -6350,7 +7252,7 @@ class LauncherWindow(QMainWindow):
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=10
+                timeout=10,
             )
 
             if result.returncode == 0:
@@ -6366,7 +7268,10 @@ class LauncherWindow(QMainWindow):
     def update_from_github(self):
         git = shutil.which("git")
         if not git:
-            return False, "Git is not installed. Install `git` to enable in-app updates."
+            return (
+                False,
+                "Git is not installed. Install `git` to enable in-app updates.",
+            )
 
         app_root = Path(__file__).resolve().parent.parent
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -6381,12 +7286,17 @@ class LauncherWindow(QMainWindow):
                     timeout=120,
                 )
                 if result.returncode != 0:
-                    message = (result.stderr or result.stdout or "Unknown error").strip()
+                    message = (
+                        result.stderr or result.stdout or "Unknown error"
+                    ).strip()
                     return False, f"Update failed: {message}"
                 output = (result.stdout or result.stderr or "").strip()
                 if "Already up to date" in output:
                     return True, "LinuxTV is already up to date."
-                return True, "LinuxTV was updated from GitHub. Restart the app to load the new version."
+                return (
+                    True,
+                    "LinuxTV was updated from GitHub. Restart the app to load the new version.",
+                )
 
             with tempfile.TemporaryDirectory(prefix="linuxtv-update-") as temp_dir:
                 clone_result = subprocess.run(
@@ -6397,11 +7307,20 @@ class LauncherWindow(QMainWindow):
                     timeout=180,
                 )
                 if clone_result.returncode != 0:
-                    message = (clone_result.stderr or clone_result.stdout or "Unknown error").strip()
+                    message = (
+                        clone_result.stderr or clone_result.stdout or "Unknown error"
+                    ).strip()
                     return False, f"Update failed: {message}"
 
                 source_root = Path(temp_dir)
-                excluded = {".git", ".venv", ".linuxtv_venv", "__pycache__", ".pytest_cache", ".mypy_cache"}
+                excluded = {
+                    ".git",
+                    ".venv",
+                    ".linuxtv_venv",
+                    "__pycache__",
+                    ".pytest_cache",
+                    ".mypy_cache",
+                }
                 for child in source_root.iterdir():
                     if child.name in excluded:
                         continue
@@ -6416,7 +7335,10 @@ class LauncherWindow(QMainWindow):
                     else:
                         shutil.copy2(child, target)
 
-            return True, "LinuxTV was updated from GitHub. Restart the app to load the new version."
+            return (
+                True,
+                "LinuxTV was updated from GitHub. Restart the app to load the new version.",
+            )
         except Exception as exc:
             logging.exception("Failed to update LinuxTV from GitHub")
             return False, f"Update failed: {exc}"
@@ -6449,7 +7371,9 @@ class LauncherWindow(QMainWindow):
 
         self.populate_tiles()
         self.focus_entry_tile("native", native_apps[-1])
-        QMessageBox.information(self, "Added", f"{name.strip()} is now available in Apps.")
+        QMessageBox.information(
+            self, "Added", f"{name.strip()} is now available in Apps."
+        )
 
     def add_web_app(self, name: str, url: str):
         normalized_url = self.normalize_url(url)
@@ -6466,7 +7390,9 @@ class LauncherWindow(QMainWindow):
 
         self.populate_tiles()
         self.focus_entry_tile("web", web_apps[-1])
-        QMessageBox.information(self, "Added", f"{name.strip()} is now available in Apps.")
+        QMessageBox.information(
+            self, "Added", f"{name.strip()} is now available in Apps."
+        )
 
     def keyPressEvent(self, event):
         if not self.tiles:
@@ -6474,20 +7400,22 @@ class LauncherWindow(QMainWindow):
 
         key = event.key()
         self.reset_auto_launch_timer()
-        if key == Qt.Key_Escape:
+        if key == Qt.Key.Escape:
             self.close()
             return
 
-        if key in (Qt.Key_Right, Qt.Key_Left, Qt.Key_Down, Qt.Key_Up):
-            self.navigate({
-                Qt.Key_Right: "RIGHT",
-                Qt.Key_Left: "LEFT",
-                Qt.Key_Down: "DOWN",
-                Qt.Key_Up: "UP",
-            }[key])
+        if key in (Qt.Key.Right, Qt.Key.Left, Qt.Key.Down, Qt.Key.Up):
+            self.navigate(
+                {
+                    Qt.Key.Right: "RIGHT",
+                    Qt.Key.Left: "LEFT",
+                    Qt.Key.Down: "DOWN",
+                    Qt.Key.Up: "UP",
+                }[key]
+            )
             return
 
-        if key in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+        if key in (Qt.Key.Return, Qt.Key.Enter, Qt.Key.Space):
             self.activate_current()
 
     def wheelEvent(self, event):
@@ -6583,7 +7511,9 @@ class LauncherWindow(QMainWindow):
     def focus_remote_target_window(self, xdotool, target_window):
         if not xdotool or not target_window:
             return False
-        subprocess.run([xdotool, "windowactivate", "--sync", target_window], check=False)
+        subprocess.run(
+            [xdotool, "windowactivate", "--sync", target_window], check=False
+        )
         subprocess.run([xdotool, "windowfocus", "--sync", target_window], check=False)
         return True
 
@@ -6597,7 +7527,9 @@ class LauncherWindow(QMainWindow):
         self.remote_target_window_cache = None
         self.remote_target_window_cache_at = 0.0
 
-    def _focus_launched_app_window(self, pid: int, attempts: int = 10, delay_seconds: float = 1.0):
+    def _focus_launched_app_window(
+        self, pid: int, attempts: int = 10, delay_seconds: float = 1.0
+    ):
         """Wait for a launched app window to appear, then activate it."""
         xdotool = shutil.which("xdotool")
         if not xdotool:
@@ -6610,12 +7542,22 @@ class LauncherWindow(QMainWindow):
                 continue
 
             target_window = window_ids[0]
-            subprocess.run([xdotool, "windowactivate", "--sync", target_window], check=False)
-            subprocess.run([xdotool, "windowfocus", "--sync", target_window], check=False)
-            logging.info("Focused launched app window %s for pid %s", target_window, pid)
+            subprocess.run(
+                [xdotool, "windowactivate", "--sync", target_window], check=False
+            )
+            subprocess.run(
+                [xdotool, "windowfocus", "--sync", target_window], check=False
+            )
+            logging.info(
+                "Focused launched app window %s for pid %s", target_window, pid
+            )
             return
 
-        logging.warning("Could not find window for launched app pid %s after %s attempts", pid, attempts)
+        logging.warning(
+            "Could not find window for launched app pid %s after %s attempts",
+            pid,
+            attempts,
+        )
 
     def launcher_context_is_active(self):
         _, active_window = self.active_system_window()
@@ -6625,7 +7567,9 @@ class LauncherWindow(QMainWindow):
         active_widget = QApplication.activeWindow()
         return bool(active_widget and active_widget.isVisible())
 
-    def dispatch_remote_key_to_launcher(self, key, modifiers=Qt.KeyboardModifier.NoModifier, text=""):
+    def dispatch_remote_key_to_launcher(
+        self, key, modifiers=Qt.KeyboardModifier.NoModifier, text=""
+    ):
         target = QApplication.focusWidget() or QApplication.activeWindow() or self
         if not target:
             return False
@@ -6655,19 +7599,19 @@ class LauncherWindow(QMainWindow):
                 return True
 
         qt_action_map = {
-            "UP": (Qt.Key_Up, Qt.NoModifier, ""),
-            "DOWN": (Qt.Key_Down, Qt.NoModifier, ""),
-            "LEFT": (Qt.Key_Left, Qt.NoModifier, ""),
-            "RIGHT": (Qt.Key_Right, Qt.NoModifier, ""),
-            "SELECT": (Qt.Key_Return, Qt.NoModifier, "\r"),
-            "OK": (Qt.Key_Return, Qt.NoModifier, "\r"),
-            "BACK": (Qt.Key_Escape, Qt.NoModifier, ""),
-            "HOME": (Qt.Key_Home, Qt.NoModifier, ""),
-            "TAB": (Qt.Key_Tab, Qt.NoModifier, "\t"),
-            "SHIFT_TAB": (Qt.Key_Backtab, Qt.ShiftModifier, "\t"),
-            "MENU": (Qt.Key_Menu, Qt.NoModifier, ""),
-            "PLAY_PAUSE": (Qt.Key_Space, Qt.NoModifier, " "),
-            "INFO": (Qt.Key_I, Qt.NoModifier, "i"),
+            "UP": (Qt.Key.Up, Qt.NoModifier, ""),
+            "DOWN": (Qt.Key.Down, Qt.NoModifier, ""),
+            "LEFT": (Qt.Key.Left, Qt.NoModifier, ""),
+            "RIGHT": (Qt.Key.Right, Qt.NoModifier, ""),
+            "SELECT": (Qt.Key.Return, Qt.NoModifier, "\r"),
+            "OK": (Qt.Key.Return, Qt.NoModifier, "\r"),
+            "BACK": (Qt.Key.Escape, Qt.NoModifier, ""),
+            "HOME": (Qt.Key.Home, Qt.NoModifier, ""),
+            "TAB": (Qt.Key.Tab, Qt.NoModifier, "\t"),
+            "SHIFT_TAB": (Qt.Key.Backtab, Qt.ShiftModifier, "\t"),
+            "MENU": (Qt.Key.Menu, Qt.NoModifier, ""),
+            "PLAY_PAUSE": (Qt.Key.Space, Qt.NoModifier, " "),
+            "INFO": (Qt.Key.I, Qt.NoModifier, "i"),
         }
         key_info = qt_action_map.get(action)
         if not key_info:
@@ -6685,23 +7629,28 @@ class LauncherWindow(QMainWindow):
         if launcher_active and self.handle_remote_action_in_launcher(action):
             return
 
-        if xdotool and target_window and action in (
-            "UP",
-            "DOWN",
-            "LEFT",
-            "RIGHT",
-            "SELECT",
-            "OK",
-            "BACK",
-            "HOME",
-            "TAB",
-            "SHIFT_TAB",
-            "MENU",
-            "PLAY_PAUSE",
-            "INFO",
-            "PREVIOUS_TRACK",
-            "NEXT_TRACK",
-            "STOP_MEDIA",
+        if (
+            xdotool
+            and target_window
+            and action
+            in (
+                "UP",
+                "DOWN",
+                "LEFT",
+                "RIGHT",
+                "SELECT",
+                "OK",
+                "BACK",
+                "HOME",
+                "TAB",
+                "SHIFT_TAB",
+                "MENU",
+                "PLAY_PAUSE",
+                "INFO",
+                "PREVIOUS_TRACK",
+                "NEXT_TRACK",
+                "STOP_MEDIA",
+            )
         ):
             self.send_remote_key_to_active_window(action)
             return
@@ -6830,7 +7779,10 @@ class LauncherWindow(QMainWindow):
 
         if allow_cached:
             cache_age = time.monotonic() - self.remote_target_window_cache_at
-            if self.remote_target_window_cache and cache_age <= REMOTE_POINTER_TARGET_CACHE_SECONDS:
+            if (
+                self.remote_target_window_cache
+                and cache_age <= REMOTE_POINTER_TARGET_CACHE_SECONDS
+            ):
                 return xdotool, self.remote_target_window_cache
 
         if not self.active_process or self.active_process.poll() is not None:
@@ -6855,17 +7807,26 @@ class LauncherWindow(QMainWindow):
 
         xdotool, target_window = self.remote_target_window()
         if not xdotool:
-            logging.warning("xdotool is not installed; cannot forward remote action %s", action)
+            logging.warning(
+                "xdotool is not installed; cannot forward remote action %s", action
+            )
             return
         if not target_window:
-            logging.warning("No active target window found for remote action %s", action)
+            logging.warning(
+                "No active target window found for remote action %s", action
+            )
             return
 
         self.focus_remote_target_window(xdotool, target_window)
         # Only send the first key in the sequence (not all of them)
         key_name = key_sequences[0]
-        subprocess.run([xdotool, "key", "--window", target_window, "--clearmodifiers", key_name], check=False)
-        logging.info("Forwarded remote action %s to active window (key: %s)", action, key_name)
+        subprocess.run(
+            [xdotool, "key", "--window", target_window, "--clearmodifiers", key_name],
+            check=False,
+        )
+        logging.info(
+            "Forwarded remote action %s to active window (key: %s)", action, key_name
+        )
 
     def send_remote_text_to_active_window(self, text: str):
         if not text:
@@ -6904,11 +7865,11 @@ class LauncherWindow(QMainWindow):
 
         if self.launcher_context_is_active():
             qt_special_key_map = {
-                "ENTER": (Qt.Key_Return, Qt.NoModifier, "\r"),
-                "SPACE": (Qt.Key_Space, Qt.NoModifier, " "),
-                "BACKSPACE": (Qt.Key_Backspace, Qt.NoModifier, "\b"),
-                "ESCAPE": (Qt.Key_Escape, Qt.NoModifier, ""),
-                "TAB": (Qt.Key_Tab, Qt.NoModifier, "\t"),
+                "ENTER": (Qt.Key.Return, Qt.NoModifier, "\r"),
+                "SPACE": (Qt.Key.Space, Qt.NoModifier, " "),
+                "BACKSPACE": (Qt.Key.Backspace, Qt.NoModifier, "\b"),
+                "ESCAPE": (Qt.Key.Escape, Qt.NoModifier, ""),
+                "TAB": (Qt.Key.Tab, Qt.NoModifier, "\t"),
             }
             key_info = qt_special_key_map.get(key.upper())
             if key_info and self.dispatch_remote_key_to_launcher(*key_info):
@@ -6917,14 +7878,21 @@ class LauncherWindow(QMainWindow):
 
         xdotool, target_window = self.remote_target_window()
         if not xdotool:
-            logging.warning("xdotool is not installed; cannot send remote special key %s", key)
+            logging.warning(
+                "xdotool is not installed; cannot send remote special key %s", key
+            )
             return
         if not target_window:
-            logging.warning("No active target window found for remote special key %s", key)
+            logging.warning(
+                "No active target window found for remote special key %s", key
+            )
             return
 
         self.focus_remote_target_window(xdotool, target_window)
-        subprocess.run([xdotool, "key", "--window", target_window, "--clearmodifiers", key_name], check=False)
+        subprocess.run(
+            [xdotool, "key", "--window", target_window, "--clearmodifiers", key_name],
+            check=False,
+        )
         logging.info("Forwarded remote special key %s to active window", key)
 
     def process_remote_pointer_event(self, event):
@@ -6934,15 +7902,24 @@ class LauncherWindow(QMainWindow):
         if not self.active_process or self.active_process.poll() is not None:
             xdotool = shutil.which("xdotool")
             if not xdotool:
-                logging.warning("xdotool is not installed; cannot forward remote pointer event")
+                logging.warning(
+                    "xdotool is not installed; cannot forward remote pointer event"
+                )
                 return
 
             # For launcher screen, just move the mouse relatively
             if event_type == "move":
-                dx = int(round(float(event.get("dx", 0)) * REMOTE_POINTER_SPEED_MULTIPLIER))
-                dy = int(round(float(event.get("dy", 0)) * REMOTE_POINTER_SPEED_MULTIPLIER))
+                dx = int(
+                    round(float(event.get("dx", 0)) * REMOTE_POINTER_SPEED_MULTIPLIER)
+                )
+                dy = int(
+                    round(float(event.get("dy", 0)) * REMOTE_POINTER_SPEED_MULTIPLIER)
+                )
                 if dx or dy:
-                    subprocess.run([xdotool, "mousemove_relative", "--", str(dx), str(dy)], check=False)
+                    subprocess.run(
+                        [xdotool, "mousemove_relative", "--", str(dx), str(dy)],
+                        check=False,
+                    )
                 return
 
             # For clicks on launcher, use current mouse position
@@ -6976,9 +7953,13 @@ class LauncherWindow(QMainWindow):
         # If an app is running, use the existing logic
         allow_cached = event_type == "move"
         focus_target = event_type != "move"
-        xdotool, target_window = self.remote_target_window(focus=focus_target, allow_cached=allow_cached)
+        xdotool, target_window = self.remote_target_window(
+            focus=focus_target, allow_cached=allow_cached
+        )
         if not xdotool:
-            logging.warning("xdotool is not installed; cannot forward remote pointer event")
+            logging.warning(
+                "xdotool is not installed; cannot forward remote pointer event"
+            )
             return
         if not target_window:
             logging.warning("No active target window found for remote pointer event")
@@ -6988,7 +7969,9 @@ class LauncherWindow(QMainWindow):
             dx = int(round(float(event.get("dx", 0)) * REMOTE_POINTER_SPEED_MULTIPLIER))
             dy = int(round(float(event.get("dy", 0)) * REMOTE_POINTER_SPEED_MULTIPLIER))
             if dx or dy:
-                subprocess.run([xdotool, "mousemove_relative", "--", str(dx), str(dy)], check=False)
+                subprocess.run(
+                    [xdotool, "mousemove_relative", "--", str(dx), str(dy)], check=False
+                )
             return
 
         if event_type in ("tap", "click"):
@@ -7025,22 +8008,32 @@ class LauncherWindow(QMainWindow):
     def close_active_app(self):
         # First try to close the tracked active process
         if self.active_process and self.active_process.poll() is None:
-            logging.info("Closing tracked active app %s (pid=%s)", self.active_process_name, self.active_process.pid)
+            logging.info(
+                "Closing tracked active app %s (pid=%s)",
+                self.active_process_name,
+                self.active_process.pid,
+            )
             try:
                 os.killpg(self.active_process.pid, signal.SIGTERM)
                 self.finish_active_process()
                 return
             except Exception:
-                logging.exception("Failed to terminate active app process group, trying xdotool")
+                logging.exception(
+                    "Failed to terminate active app process group, trying xdotool"
+                )
                 try:
                     self.active_process.terminate()
                     self.finish_active_process()
                     return
                 except Exception:
-                    logging.exception("Failed to terminate active app directly, trying xdotool")
+                    logging.exception(
+                        "Failed to terminate active app directly, trying xdotool"
+                    )
 
         # If no tracked process or termination failed, try to close the active window
-        logging.info("No tracked process or process already exited, trying to close active window")
+        logging.info(
+            "No tracked process or process already exited, trying to close active window"
+        )
         xdotool, active_window = self.active_system_window()
 
         if xdotool and active_window:
@@ -7055,7 +8048,9 @@ class LauncherWindow(QMainWindow):
             logging.info("Closing active window %s using xdotool", active_window)
             try:
                 # Try to close the window gracefully
-                subprocess.run([xdotool, "windowclose", active_window], check=False, timeout=3)
+                subprocess.run(
+                    [xdotool, "windowclose", active_window], check=False, timeout=3
+                )
 
                 # Also try sending Alt+F4 as fallback
                 time.sleep(0.2)
@@ -7103,7 +8098,9 @@ class LauncherWindow(QMainWindow):
 
                 if is_browser:
                     # Browsers use 'f' key for fullscreen toggle
-                    logging.info("Browser detected, sending 'f' key for fullscreen toggle")
+                    logging.info(
+                        "Browser detected, sending 'f' key for fullscreen toggle"
+                    )
                     subprocess.run([xdotool, "key", "f"], check=False, timeout=3)
                 else:
                     # Send F11 key to toggle fullscreen (standard for most apps)
@@ -7117,16 +8114,23 @@ class LauncherWindow(QMainWindow):
         """Check if the active window is a browser."""
         try:
             # Get window class/name to detect browser
-            window_class = subprocess.run(
-                [xdotool, "getwindowclassname", window_id],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=2
-            ).stdout.strip().lower()
+            window_class = (
+                subprocess.run(
+                    [xdotool, "getwindowclassname", window_id],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=2,
+                )
+                .stdout.strip()
+                .lower()
+            )
 
             # Check if it's a browser window
-            is_browser = any(browser in window_class for browser in ['brave', 'chrome', 'chromium', 'firefox'])
+            is_browser = any(
+                browser in window_class
+                for browser in ["brave", "chrome", "chromium", "firefox"]
+            )
 
             return is_browser
         except Exception as e:
@@ -7193,13 +8197,19 @@ class LauncherWindow(QMainWindow):
         self.update_auto_launch_status()
 
     def reset_auto_launch_timer(self):
-        if self.active_process or not self.isVisible() or QApplication.activeModalWidget():
+        if (
+            self.active_process
+            or not self.isVisible()
+            or QApplication.activeModalWidget()
+        ):
             self.auto_launch_timer.stop()
             self.auto_launch_countdown_timer.stop()
             self.update_auto_launch_status()
             return
         auto_launch = self.config.get("auto_launch", {})
-        delay_seconds = int(auto_launch.get("delay_seconds", AUTO_LAUNCH_IDLE_MS // 1000) or 0)
+        delay_seconds = int(
+            auto_launch.get("delay_seconds", AUTO_LAUNCH_IDLE_MS // 1000) or 0
+        )
         app_kind = str(auto_launch.get("app_kind", "")).strip()
         app_target = str(auto_launch.get("app_target", "")).strip()
         if not app_kind or not app_target or delay_seconds < 1:
@@ -7232,7 +8242,9 @@ class LauncherWindow(QMainWindow):
 
         for entry in self.get_launchable_entries():
             app = entry["item"]
-            value = app.get("cmd", "") if entry["kind"] == "native" else app.get("url", "")
+            value = (
+                app.get("cmd", "") if entry["kind"] == "native" else app.get("url", "")
+            )
             if entry["kind"] == target_kind and value == target_value:
                 return entry
         return None
@@ -7240,14 +8252,21 @@ class LauncherWindow(QMainWindow):
     def auto_launch_selected_app_if_idle(self):
         self.auto_launch_countdown_timer.stop()
         self.update_auto_launch_status()
-        if self.active_process or not self.isVisible() or QApplication.activeModalWidget():
+        if (
+            self.active_process
+            or not self.isVisible()
+            or QApplication.activeModalWidget()
+        ):
             return
 
         selected_entry = self.find_auto_launch_entry()
         if selected_entry is None:
             return
 
-        logging.info("Idle timeout reached; auto-launching %s", selected_entry["item"].get("name", "selected app"))
+        logging.info(
+            "Idle timeout reached; auto-launching %s",
+            selected_entry["item"].get("name", "selected app"),
+        )
         self.launch_app(selected_entry["item"], selected_entry["kind"])
 
     def update_auto_launch_status(self):
@@ -7261,7 +8280,11 @@ class LauncherWindow(QMainWindow):
             self.auto_launch_cancel_button.hide()
             return
 
-        if self.active_process or not self.isVisible() or QApplication.activeModalWidget():
+        if (
+            self.active_process
+            or not self.isVisible()
+            or QApplication.activeModalWidget()
+        ):
             self.auto_launch_status_label.hide()
             self.auto_launch_status_label.setText("")
             self.auto_launch_cancel_button.hide()
@@ -7275,8 +8298,17 @@ class LauncherWindow(QMainWindow):
             self.auto_launch_cancel_button.setText("Resume Auto-Open")
         else:
             remaining_ms = self.auto_launch_timer.remainingTime()
-            if remaining_ms is None or remaining_ms < 0 or not self.auto_launch_timer.isActive():
-                remaining_seconds = int(self.config.get("auto_launch", {}).get("delay_seconds", AUTO_LAUNCH_IDLE_MS // 1000) or 0)
+            if (
+                remaining_ms is None
+                or remaining_ms < 0
+                or not self.auto_launch_timer.isActive()
+            ):
+                remaining_seconds = int(
+                    self.config.get("auto_launch", {}).get(
+                        "delay_seconds", AUTO_LAUNCH_IDLE_MS // 1000
+                    )
+                    or 0
+                )
             else:
                 remaining_seconds = max(0, (remaining_ms + 999) // 1000)
             self.auto_launch_status_label.setText(
@@ -7288,7 +8320,7 @@ class LauncherWindow(QMainWindow):
 
     def update_ip_label(self):
         """Update the IP label with current network info and time."""
-        if not hasattr(self, 'ip_label'):
+        if not hasattr(self, "ip_label"):
             return
 
         # Get current time (this updates every second)
@@ -7296,7 +8328,7 @@ class LauncherWindow(QMainWindow):
 
         # Check if we need to refresh WiFi info (only every 30 seconds)
         current_timestamp = time.time()
-        if not hasattr(self, '_last_wifi_check'):
+        if not hasattr(self, "_last_wifi_check"):
             self._last_wifi_check = 0
 
         # Refresh WiFi info if more than 30 seconds have passed
@@ -7307,9 +8339,9 @@ class LauncherWindow(QMainWindow):
             self._last_wifi_check = current_timestamp
 
         # Use cached values
-        ip_address = getattr(self, '_cached_ip_address', self.get_ip_address())
-        wifi_ssid = getattr(self, '_cached_wifi_ssid', '')
-        is_wifi = getattr(self, '_cached_is_wifi', False)
+        ip_address = getattr(self, "_cached_ip_address", self.get_ip_address())
+        wifi_ssid = getattr(self, "_cached_wifi_ssid", "")
+        is_wifi = getattr(self, "_cached_is_wifi", False)
 
         if is_wifi:
             if wifi_ssid:
@@ -7405,7 +8437,11 @@ class LauncherWindow(QMainWindow):
                 logging.warning("Web app missing URL: %s", item)
                 return
 
-            if "chromium" in self.browser_exe or "chrome" in self.browser_exe or "brave" in self.browser_exe:
+            if (
+                "chromium" in self.browser_exe
+                or "chrome" in self.browser_exe
+                or "brave" in self.browser_exe
+            ):
                 geometry = self.get_target_geometry()
                 command = [
                     self.browser_exe,
@@ -7443,7 +8479,12 @@ class LauncherWindow(QMainWindow):
                 self.active_fullscreen_stop_event = threading.Event()
                 self.active_fullscreen_thread = threading.Thread(
                     target=enforce_native_fullscreen,
-                    args=(command, self.active_process.pid, geometry, self.active_fullscreen_stop_event),
+                    args=(
+                        command,
+                        self.active_process.pid,
+                        geometry,
+                        self.active_fullscreen_stop_event,
+                    ),
                     daemon=True,
                 )
                 self.active_fullscreen_thread.start()
