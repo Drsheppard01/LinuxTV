@@ -4,7 +4,6 @@ import asyncio
 import base64
 import configparser
 import hashlib
-import importlib
 import json
 import logging
 import os
@@ -33,89 +32,35 @@ try:
 except ImportError:
     websockets = None
 
-QT_BINDING = None
-
-
-def _load_qt_binding():
-    """Load PyQt6 binding."""
-    try:
-        qt_core = importlib.import_module("PyQt6.QtCore")
-        qt_gui = importlib.import_module("PyQt6.QtGui")
-        qt_widgets = importlib.import_module("PyQt6.QtWidgets")
-        signal_type = qt_core.pyqtSignal
-
-        return (
-            "PyQt6",
-            qt_core.QEvent,
-            qt_core.QEasingCurve,
-            qt_core.QObject,
-            qt_core.QPropertyAnimation,
-            qt_core.QRect,
-            qt_core.Qt,
-            qt_core.QSize,
-            qt_core.QTimer,
-            signal_type,
-            qt_gui.QFont,
-            qt_gui.QIcon,
-            qt_gui.QKeyEvent,
-            qt_gui.QPixmap,
-            qt_gui.QWheelEvent,
-            qt_gui.QColor,
-            qt_gui.QPainter,
-            qt_gui.QLinearGradient,
-            qt_widgets.QApplication,
-            qt_widgets.QComboBox,
-            qt_widgets.QDialog,
-            qt_widgets.QFrame,
-            qt_widgets.QGraphicsDropShadowEffect,
-            qt_widgets.QGraphicsOpacityEffect,
-            qt_widgets.QGridLayout,
-            qt_widgets.QHBoxLayout,
-            qt_widgets.QLabel,
-            qt_widgets.QLineEdit,
-            qt_widgets.QMainWindow,
-            qt_widgets.QMenu,
-            qt_widgets.QMessageBox,
-            qt_widgets.QPushButton,
-            qt_widgets.QSizePolicy,
-            qt_widgets.QScrollArea,
-            qt_widgets.QSlider,
-            qt_widgets.QToolButton,
-            qt_widgets.QVBoxLayout,
-            qt_widgets.QWidget,
-            qt_gui.QDrag,
-            qt_core.QMimeData,
-        )
-    except ImportError as e:
-        raise ImportError("PyQt6 not found. Install it with: pip install PyQt6") from e
-
-
-(
-    QT_BINDING,
-    QEvent,
+from PyQt6.QtCore import (
     QEasingCurve,
+    QEvent,
+    QMimeData,
     QObject,
     QPropertyAnimation,
     QRect,
-    Qt,
     QSize,
+    Qt,
     QTimer,
-    Signal,
+)
+from PyQt6.QtCore import (
+    pyqtSignal as Signal,
+)
+from PyQt6.QtGui import (
+    QColor,
+    QDrag,
     QFont,
     QIcon,
     QKeyEvent,
-    QPixmap,
-    QWheelEvent,
-    QColor,
-    QPainter,
     QLinearGradient,
+    QPainter,
+    QPixmap,
+)
+from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
-    QFrame,
     QGraphicsDropShadowEffect,
-    QGraphicsOpacityEffect,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -123,15 +68,15 @@ def _load_qt_binding():
     QMenu,
     QMessageBox,
     QPushButton,
-    QSizePolicy,
     QScrollArea,
+    QSizePolicy,
     QSlider,
     QToolButton,
     QVBoxLayout,
     QWidget,
-    QDrag,
-    QMimeData,
-) = _load_qt_binding()
+)
+
+QT_BINDING = "PyQt6"
 
 APP_NAME = "LinuxTV"
 LOG_FORMAT = "%(asctime)s %(levelname)s %(message)s"
@@ -143,13 +88,6 @@ DEFAULT_CONFIG = {
         {"name": "Kodi", "cmd": "kodi", "icon": "icons/kodi.png"},
         {"name": "Stremio", "cmd": "stremio", "icon": "icons/stremio.png"},
         {"name": "VLC", "cmd": "vlc", "icon": "icons/vlc.png"},
-    ],
-    "web_apps": [
-        {
-            "name": "YouTube",
-            "url": "https://www.youtube.com",
-            "icon": "icons/youtube.png",
-        },
     ],
     "auth": {
         "username": "",
@@ -175,41 +113,57 @@ UPDATE_REPO_URL = "https://github.com/guruswarupa/LinuxTV"
 
 
 def sync_system_time():
-    timedatectl = shutil.which("timedatectl")
-    if not timedatectl:
-        return False, "timedatectl is not installed."
+    """Synchronize system time using available NTP tools."""
 
+    # Проверяем доступные инструменты
+    for tool_name, func in [
+        ("ntpd", _sync_with_ntpd),
+        ("chronyc", _sync_with_chrony),
+    ]:
+        if shutil.which(tool_name):
+            return func()
+
+    return False, "No time synchronization tool found (ntpd or chrony required)."
+
+
+def _sync_with_ntpd():
+    """Synchronize using ntpd."""
     try:
         result = subprocess.run(
-            [timedatectl, "set-ntp", "true"],
+            ["ntpd", "-q"],
             capture_output=True,
             text=True,
-            check=False,
+            timeout=30,
+        )
+
+        if result.returncode == 0:
+            return True, "System time synchronized with ntpd."
+        else:
+            return False, f"ntpd failed: {result.stderr.strip()}"
+
+    except Exception as exc:
+        logging.exception("Failed to sync time")
+        return False, f"Could not sync time: {exc}"
+
+
+def _sync_with_chrony():
+    """Synchronize using chrony."""
+    try:
+        result = subprocess.run(
+            ["chronyc", "makestep"],
+            capture_output=True,
+            text=True,
             timeout=20,
         )
+
+        if result.returncode == 0:
+            return True, "System time synchronized with chrony."
+        else:
+            return False, f"chrony failed: {result.stderr.strip()}"
+
     except Exception as exc:
-        logging.exception("Failed to enable automatic time sync")
-        return False, f"Could not enable automatic time sync: {exc}"
-
-    if result.returncode != 0:
-        message = (result.stderr or result.stdout or "Unknown error").strip()
-        return False, f"Could not enable automatic time sync: {message}"
-
-    try:
-        status_result = subprocess.run(
-            [timedatectl, "show", "--property=NTPSynchronized", "--value"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=10,
-        )
-        ntp_synced = status_result.stdout.strip().lower() == "yes"
-    except Exception:
-        ntp_synced = False
-
-    if ntp_synced:
-        return True, "System time synchronized."
-    return True, "Automatic time sync enabled."
+        logging.exception("Failed to sync time")
+        return False, f"Could not sync time: {exc}"
 
 
 def dialog_metrics():
@@ -562,7 +516,12 @@ def normalized_icon_path(source_path: str, cache_key: str, size: int = 96):
     if pixmap.isNull():
         return str(icon_source)
 
-    scaled = pixmap.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    scaled = pixmap.scaled(
+        size,
+        size,
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
     scaled.save(str(target_path), "PNG")
     return str(target_path)
 
@@ -582,17 +541,18 @@ def create_white_icon(icon_path: str, size: int = 96):
 
     # Create a new pixmap with the same size
     white_pixmap = QPixmap(pixmap.size())
-    white_pixmap.fill(QColor(0, 0, 0, 0))  # прозрачный
+    white_pixmap.fill(Qt.GlobalColor.transparent)
 
     # Paint the original pixmap in white
     painter = QPainter(white_pixmap)
-    painter.setCompositionMode(QPainter.Source)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
     painter.drawPixmap(0, 0, pixmap)
-    painter.setCompositionMode(QPainter.SourceIn)
-    painter.fillRect(white_pixmap.rect(), QColor("white"))
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    painter.fillRect(white_pixmap.rect(), Qt.GlobalColor.white)
     painter.end()
 
     return QIcon(white_pixmap)
+
 
 @lru_cache(maxsize=256)
 def resolve_icon_name(icon_name: str):
@@ -1396,9 +1356,9 @@ def enforce_native_fullscreen(
 
 def request_system_power_action(action: str):
     command_map = {
-        "SHUTDOWN": ["systemctl", "poweroff"],
-        "REBOOT": ["systemctl", "reboot"],
-        "SLEEP": ["systemctl", "suspend"],
+        "SHUTDOWN": ["loginctl", "poweroff"],
+        "REBOOT": ["loginctl", "reboot"],
+        "SLEEP": ["loginctl", "suspend"],
     }
     command = command_map.get(action.upper())
     if not command:
@@ -1417,18 +1377,16 @@ def request_system_power_action(action: str):
 def request_system_update():
     """Trigger system update using apt, auto-password only for linuxtv user"""
     # Check if apt is available
-    apt = shutil.which("apt")
+    apk = shutil.which("apk")
     if not apt:
-        logging.warning("apt is not available on this system")
-        return False, "apt is not available on this system"
+        logging.warning("apk is not available on this system")
+        return False, "apk is not available on this system"
 
     try:
         # Use a terminal emulator if available
         terminal_emulators = [
-            "gnome-terminal",
-            "x-terminal-emulator",
-            "xterm",
-            "konsole",
+            "foot",
+            "lab-sensible-terminal",
         ]
         terminal = None
         for term in terminal_emulators:
@@ -1439,21 +1397,21 @@ def request_system_update():
         # Check current username - only auto-password for linuxtv user
         current_user = os.environ.get("USER") or os.environ.get("LOGNAME") or ""
 
-        if current_user == "linuxtv":
+        if current_user == "tvbox":
             # Auto-fill password for linuxtv user
-            update_command = "echo 'linuxtv' | sudo -S apt update && echo 'linuxtv' | sudo -S apt upgrade -y"
+            update_command = "echo 'tvbox' | sudo -S apk update && echo 'tvbox' | sudo -S apk upgrade -y"
         else:
             # Let user enter password manually
-            update_command = "sudo apt update && sudo apt upgrade -y"
+            update_command = "sudo apk update && sudo apk upgrade -y"
 
         if terminal:
             # Run in terminal so user can see progress
-            if terminal == "gnome-terminal":
+            if terminal == "foot":
                 subprocess.Popen(
                     [
                         terminal,
                         "--",
-                        "bash",
+                        "sh",
                         "-c",
                         f"{update_command}; echo 'Update complete. Press Enter to close.'; read",
                     ]
@@ -1463,14 +1421,14 @@ def request_system_update():
                     [
                         terminal,
                         "-e",
-                        f"bash -c '{update_command}; echo Update complete. Press Enter to close.; read'",
+                        f"zsh -c '{update_command}; echo Update complete. Press Enter to close.; read'",
                     ]
                 )
             logging.info("Triggered system update in terminal (user: %s)", current_user)
             return True, "System update started in terminal"
         else:
             # No terminal available, run silently
-            subprocess.Popen(["bash", "-c", update_command])
+            subprocess.Popen(["zsh", "-c", update_command])
             logging.info(
                 "Triggered system update (no terminal available, user: %s)",
                 current_user,
@@ -4537,28 +4495,54 @@ class LauncherWindow(QMainWindow):
             return "127.0.0.1"
 
     def get_wifi_ssid(self):
-        """Get the current WiFi SSID"""
-        import subprocess
-
+        """Get the current WiFi SSID using iwd"""
         try:
-            nmcli = shutil.which("nmcli")
-            if not nmcli:
+            iwctl = shutil.which("iwctl")
+            if not iwctl:
                 return ""
 
-            # Get active WiFi connections
-            result = subprocess.run(
-                [nmcli, "-t", "-f", "active,ssid", "dev", "wifi"],
+            # Получаем список WiFi интерфейсов
+            devices_result = subprocess.run(
+                [iwctl, "device", "list"],
                 capture_output=True,
                 text=True,
                 check=False,
                 timeout=5,
             )
 
-            if result.returncode == 0 and result.stdout:
-                for line in result.stdout.splitlines():
-                    if line.startswith("yes:"):
-                        ssid = line.split(":", 1)[1]
-                        return ssid
+            if devices_result.returncode != 0:
+                return ""
+
+            # Ищем первый WiFi интерфейс
+            wifi_interface = None
+            for line in devices_result.stdout.splitlines():
+                # Формат: "wlan0" (первая колонка, если есть)
+                parts = line.split()
+                if parts:
+                    wifi_interface = parts[0]
+                    break
+
+            if not wifi_interface:
+                return ""
+
+            # Получаем информацию о подключении
+            result = subprocess.run(
+                [iwctl, "station", wifi_interface, "show"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+
+            if result.returncode != 0:
+                return ""
+
+            # Парсим вывод для поиска Connected network
+            for line in result.stdout.splitlines():
+                if "Connected network" in line:
+                    # Формат: "Connected network                 MySSID"
+                    ssid = line.split("Connected network", 1)[-1].strip()
+                    return ssid
 
             return ""
         except Exception as e:
@@ -4566,31 +4550,54 @@ class LauncherWindow(QMainWindow):
             return ""
 
     def is_wifi_connection(self):
-        """Check if current connection is via WiFi"""
+        """Check if current connection is via WiFi using iwd"""
         import subprocess
 
         try:
-            nmcli = shutil.which("nmcli")
-            if not nmcli:
+            iwctl = shutil.which("iwctl")
+            if not iwctl:
                 return False
 
-            # Check if we have an active WiFi connection
-            result = subprocess.run(
-                [nmcli, "-t", "-f", "active,ssid", "dev", "wifi"],
+            devices_result = subprocess.run(
+                [iwctl, "device", "list"],
                 capture_output=True,
                 text=True,
                 check=False,
                 timeout=5,
             )
 
-            is_wifi = False
-            if result.returncode == 0 and result.stdout:
-                for line in result.stdout.splitlines():
-                    if line.startswith("yes:"):
-                        is_wifi = True
-                        break
+            if devices_result.returncode != 0:
+                return False
 
-            return is_wifi
+            wifi_interface = None
+            for line in devices_result.stdout.splitlines():
+                parts = line.split()
+                if parts:
+                    wifi_interface = parts[0]
+                    break
+
+            if not wifi_interface:
+                return False
+
+            result = subprocess.run(
+                [iwctl, "station", wifi_interface, "show"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+
+            if result.returncode != 0:
+                return False
+
+            for line in result.stdout.splitlines():
+                if "State" in line:
+                    # Формат: "State                              connected"
+                    state = line.split("State", 1)[-1].strip()
+                    return state.lower() == "connected"
+
+            return False
+
         except Exception as e:
             logging.error(f"Error checking WiFi connection: {e}")
             return False
@@ -7400,11 +7407,11 @@ class LauncherWindow(QMainWindow):
 
         key = event.key()
         self.reset_auto_launch_timer()
-        if key == Qt.Key.Escape:
+        if key == Qt.Key.Key_Escape:
             self.close()
             return
 
-        if key in (Qt.Key.Right, Qt.Key.Left, Qt.Key.Down, Qt.Key.Up):
+        if key in (Qt.Key.Key_Right, Qt.Key.Key_Left, Qt.Key.Key_Down, Qt.Key.Key_Up):
             self.navigate(
                 {
                     Qt.Key.Right: "RIGHT",
@@ -7415,7 +7422,7 @@ class LauncherWindow(QMainWindow):
             )
             return
 
-        if key in (Qt.Key.Return, Qt.Key.Enter, Qt.Key.Space):
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
             self.activate_current()
 
     def wheelEvent(self, event):
@@ -7599,19 +7606,19 @@ class LauncherWindow(QMainWindow):
                 return True
 
         qt_action_map = {
-            "UP": (Qt.Key.Up, Qt.NoModifier, ""),
-            "DOWN": (Qt.Key.Down, Qt.NoModifier, ""),
-            "LEFT": (Qt.Key.Left, Qt.NoModifier, ""),
-            "RIGHT": (Qt.Key.Right, Qt.NoModifier, ""),
-            "SELECT": (Qt.Key.Return, Qt.NoModifier, "\r"),
-            "OK": (Qt.Key.Return, Qt.NoModifier, "\r"),
-            "BACK": (Qt.Key.Escape, Qt.NoModifier, ""),
-            "HOME": (Qt.Key.Home, Qt.NoModifier, ""),
-            "TAB": (Qt.Key.Tab, Qt.NoModifier, "\t"),
-            "SHIFT_TAB": (Qt.Key.Backtab, Qt.ShiftModifier, "\t"),
-            "MENU": (Qt.Key.Menu, Qt.NoModifier, ""),
-            "PLAY_PAUSE": (Qt.Key.Space, Qt.NoModifier, " "),
-            "INFO": (Qt.Key.I, Qt.NoModifier, "i"),
+            "UP": (Qt.Key.Key_Up, Qt.NoModifier, ""),
+            "DOWN": (Qt.Key.Key_Down, Qt.NoModifier, ""),
+            "LEFT": (Qt.Key.Key_Left, Qt.NoModifier, ""),
+            "RIGHT": (Qt.Key.Key_Right, Qt.NoModifier, ""),
+            "SELECT": (Qt.Key.Key_Return, Qt.NoModifier, "\r"),
+            "OK": (Qt.Key.Key_Return, Qt.NoModifier, "\r"),
+            "BACK": (Qt.Key.Key_Escape, Qt.NoModifier, ""),
+            "HOME": (Qt.Key.Key_Home, Qt.NoModifier, ""),
+            "TAB": (Qt.Key.Key_Tab, Qt.NoModifier, "\t"),
+            "SHIFT_TAB": (Qt.Key.Key_Backtab, Qt.ShiftModifier, "\t"),
+            "MENU": (Qt.Key.Key_Menu, Qt.NoModifier, ""),
+            "PLAY_PAUSE": (Qt.Key.Key_Space, Qt.NoModifier, " "),
+            "INFO": (Qt.Key.Key_I, Qt.NoModifier, "i"),
         }
         key_info = qt_action_map.get(action)
         if not key_info:
@@ -7865,11 +7872,11 @@ class LauncherWindow(QMainWindow):
 
         if self.launcher_context_is_active():
             qt_special_key_map = {
-                "ENTER": (Qt.Key.Return, Qt.NoModifier, "\r"),
-                "SPACE": (Qt.Key.Space, Qt.NoModifier, " "),
-                "BACKSPACE": (Qt.Key.Backspace, Qt.NoModifier, "\b"),
-                "ESCAPE": (Qt.Key.Escape, Qt.NoModifier, ""),
-                "TAB": (Qt.Key.Tab, Qt.NoModifier, "\t"),
+                "ENTER": (Qt.Key.Key_Return, Qt.NoModifier, "\r"),
+                "SPACE": (Qt.Key.Key_Space, Qt.NoModifier, " "),
+                "BACKSPACE": (Qt.Key.Key_Backspace, Qt.NoModifier, "\b"),
+                "ESCAPE": (Qt.Key.Key_Escape, Qt.NoModifier, ""),
+                "TAB": (Qt.Key.Key_Tab, Qt.NoModifier, "\t"),
             }
             key_info = qt_special_key_map.get(key.upper())
             if key_info and self.dispatch_remote_key_to_launcher(*key_info):
